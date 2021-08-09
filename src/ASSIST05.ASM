@@ -50,7 +50,7 @@ MONSTR EQU    $1800    ; START OF MONITOR
 PCMASK EQU    $1F      ; MASK OFF FOR BK ADDRESS SPACE (E2)
 NUMBKP EQU    3        ; NUMBER OF BREAKPOINTS
 ACIA   EQU    $17F8    ; ACIA ADDRESS
-PROMPT EQU    '>       ; PROMPT CHARACTER
+PROMPT EQU    '>'      ; PROMPT CHARACTER
 TIMER  EQU    8        ; TIMER DATA REGISTER
 TIMEC  EQU    9        ; TIMER CONTROL REGISTER
 
@@ -97,15 +97,15 @@ VECRAM RMB    12       ; VECTORS
 *************************************************
 MBASE  EQU    *        ; START OF WORK PAGE IN ROM
 * MSGUP MUST BE FIRST IN PAGE
-MSGUP  FCC    /ASSIST05 1.1/ ; FIREUP MESSAGE
+MSGUP  FCC    "ASSIST05 1.1" ; FIREUP MESSAGE
 MSGNUL FCB    EOT      ; END OF STRING
-MSGERR FCC    /? ERROR ?/
+MSGERR FCC    "? ERROR ?"
        FCB    EOT
-MSGS1  FCB    'S,'1,EOT ; S1 START RECORD TEXT
-MSGS9  FCC    /S9030000FC/
+MSGS1  FCB    'S','1',EOT ; S1 START RECORD TEXT
+MSGS9  FCC    "S9030000FC"
        FCB    CR       ; S9 RECORD TEXT
 MSGMOF FCB    DC4,DC3,EOT ; MOTORS OFF TEXT
-MSGWAS FCC    /IS OPCODE/
+MSGWAS FCC    "IS OPCODE"
        FCB    EOT
 VECTAB FCB    JMPOP
        FDB    TIRQ
@@ -195,12 +195,12 @@ CMDL   JSR    CHRIN    ; READ CARRIAGE RETURN
        JSR    CHROUT   ; WITH DC1 CONTROL CODE
 * SEARCH FOR AN 'S'
 CMDLT  JSR    CHRIN    ; READ A CHARACTER
-CMDLSS CMP    #'S      ; ? 'S'
+CMDLSS CMP    #'S'     ; ? 'S'
        BNE    CMDLT    ; LOOP IF NOT
        JSR    CHRIN    ; READ SECOND CHARACTER
-       CMP    #'9      ; ? 'S9' RECORD
+       CMP    #'9'     ; ? 'S9' RECORD
        BEQ    CLEOF    ; BRANCH END OF FILE
-       CMP    #'1      ; ? 'S1' RECORD
+       CMP    #'1'     ; ? 'S1' RECORD
        BNE    CMDLSS   ; NO, TRY 'S' AGAIN
 * READ ADDRESS AND COUNT
        CLR    CHKSUM   ; ZERO CHECKSUM
@@ -252,7 +252,7 @@ MCHNGE BSR    LOAD     ; LOAD BYTE INTO A REGISTER
 * CHECK OUT DELIMITERS
 CMDMDL CMP    #LF      ; ? TO NEXT BYTE
        BEQ    CMDMLF   ; BRANCH IF SO
-       CMP    #'^      ; ? TO PREVIOUS BYTE
+       CMP    #'^'     ; ? TO PREVIOUS BYTE
        BEQ    CMDMBK   ; BRANCH YES
        JMP    CMDNNL   ; ENTER COMMAND HANDLER
 CMDMBK TST    ADDRL    ; ? LOW BYTE ZERO
@@ -342,10 +342,10 @@ PUTBYT STA    WORK1    ; SAVE A
 *  A,X TRANSPARENT                              *
 *************************************************
 PUTNYB AND    #$F      ; MASK OFF HIGH NYBBLE
-       ADD    #'0      ; ADD ASCII ZERO
-       CMP    #'9      ; CHECK FOR A-F
+       ADD    #'0'     ; ADD ASCII ZERO
+       CMP    #'9'     ; CHECK FOR A-F
        BLS    CHROUT   ; OK, SEND OUT
-       ADD    #'A-'9-1 ; ADJUSTMENT FOR HEX A-F
+       ADD    #'A'-'9'-1 ; ADJUSTMENT FOR HEX A-F
        BRA    CHROUT
 
 *************************************************
@@ -371,13 +371,13 @@ PDATA1 LDA    MBASE,X  ; LOAD NEXT CHARACTER
 *  WORK1 IN USE                          *
 ******************************************
 GETNYB JSR    CHRIN    ; OBTAIN CHARACTER
-       CMP    #'0      ; ? LOWER THAN ZERO
+       CMP    #'0'     ; ? LOWER THAN ZERO
        BLO    GETNCH   ; BRANCH NOT HEX
-       CMP    #'9      ; ? HIGHER THAN NINE
+       CMP    #'9'     ; ? HIGHER THAN NINE
        BLS    GETNHX   ; BRANCH IF 0 THRU 9
-       CMP    #'A      ; ? LOWER THAN AN "A"
+       CMP    #'A'     ; ? LOWER THAN AN "A"
        BLO    GETNCH   ; BRANCH NOT HEX
-       CMP    #'F      ; ? HIGHER THAN AN "F"
+       CMP    #'F'     ; ? HIGHER THAN AN "F"
        BHI    GETNCH   ; BRANCH NOT HEX
        SUB    #7       ; ADJUST TO $A OFFSET
 GETNHX AND    #$0F     ; CLEAR ASCII BITS
@@ -400,7 +400,7 @@ GETADR JSR    PUTSP
        CLR    ADDRH    ; CLEAR HIGH BYTE
        BSR    GETNYB   ; OBTAIN FIRST HEX VALUE
        BCS    GETGTD   ; BRANCH IF GOT IT
-       CMP    #'       ; ? SPACE
+       CMP    #' '     ; ? SPACE
        BEQ    GETADR   ; LOOP IF SO
        CLC             ; RETURN NO NUMBER
        RTS             ; RETURN
@@ -503,33 +503,33 @@ CMDNNL LDA    #PROMPT  ; READY PROMPT CHR
        JSR    REMBKP   ; REMOVE BREAKPOINTS IF IN
        BSR    CHRIN    ; GET NEXT CHARACTER
        CLRX            ; ZERO FOR SOME COMMANDS
-       CMP    #'C      ; ? DISPLAY/CHANGE C REGISTER
+       CMP    #'C'     ; ? DISPLAY/CHANGE C REGISTER
        BEQ    CMDC     ; BRANCH IF SO
-       CMP    #'X      ; ? DISPLAY/CHANGE X REGISTER
+       CMP    #'X'     ; ? DISPLAY/CHANGE X REGISTER
        BEQ    CMDX     ; BRANCH IF SO
-       CMP    #'A      ; ? DISPLAY/CHANGE A REGISTER
+       CMP    #'A'     ; ? DISPLAY/CHANGE A REGISTER
        BEQ    CMDA     ; BRANCH IF SO
-       CMP    #'R      ; ? REGISTER DISPLAY
+       CMP    #'R'     ; ? REGISTER DISPLAY
        BEQ    REGR     ; BRANCH YES
-       CMP    #'L      ; ? LOAD FILE
+       CMP    #'L'     ; ? LOAD FILE
        BNE    NOTL     ; NOPE
        JMP    CMDL     ; BRANCH YES
-NOTL   CMP    #'G      ; ? GO COMMAND
+NOTL   CMP    #'G'     ; ? GO COMMAND
        BNE    NOTG     ; BRANCH NOT
        BSET   7,WORK4
 ISP    JMP    CMDG     ; GO TO OY
-NOTG   CMP    #'M      ; ? MEMORY COMMAND
+NOTG   CMP    #'M'     ; ? MEMORY COMMAND
        BNE    NOTM     ; BRANCH NOT
        JMP    CMDM     ; GO TO MEMORY DISPLAY/CHANGE
-NOTM   CMP    #'T      ; ? TRACE
+NOTM   CMP    #'T'     ; ? TRACE
        BNE    NOTT     ; ERROR IF NOT
        JMP    CMDT     ; GO TO IT
-NOTT   CMP    #'W      ; ? WRITE MEMORY
+NOTT   CMP    #'W'     ; ? WRITE MEMORY
        BNE    NOTW     ; BRANCH NO
        JMP    CMDW     ; GO TO IT
-NOTW   CMP    #'B      ; ? BREAKPOINT COMMAND
+NOTW   CMP    #'B'     ; ? BREAKPOINT COMMAND
        BEQ    BPNT     ; YES
-       CMP    #'P      ; ? PC COMMAND
+       CMP    #'P'     ; ? PC COMMAND
        BNE    CMDERR
        BCLR   7,WORK4
        BRA    ISP
@@ -669,7 +669,7 @@ LOCDWN DECX            ; TO NEXT LOWER BYTE IN STACK
 *  B -- BREAKPOINT CLEAR, SET, OR DISPLAY    *
 **********************************************
 CMDB   JSR    CHRIN    ; READ NEXT CHARACTER
-       CMP    #'       ; ? DISPLAY ONLY
+       CMP    #' '     ; ? DISPLAY ONLY
        BNE    BDSPLY   ; BRANCH IF SO
        BSR    PGTADR   ; OBTAIN BREAKPOINT NUMBER
        TSTX            ; ? ANY HIGH BYTE VALUE
