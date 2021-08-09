@@ -1,942 +1,1110 @@
-       1/       0 :                    ;       NAM   ASSIST05
-       2/       0 :
-       3/       0 :                    ***************************************************
-       4/       0 :                    *    MONITOR FOR THE AUSTIN 6805 EVALUATION MODULE*
-       5/       0 :                    *          (C) COPYRIGHT 1979 MOTOROLA INC.       *
-       6/       0 :                    ***************************************************
-       7/       0 :
-       8/       0 :                    **************************************************
-       9/       0 :                    *
-      10/       0 :                    *      THE MONITOR HAS THE FOLLOWING COMMANDS:
-      11/       0 :                    *
-      12/       0 :                    *      R           --  PRINT RGEISTERS
-      13/       0 :                    *
-      14/       0 :                    *      A           --  DISPLAY/CHANGE A REGISTER
-      15/       0 :                    *
-      16/       0 :                    *      X           --  DISPLAY/CHANGE X REGISTER
-      17/       0 :                    *
-      18/       0 :                    *      C           --  DISPLAY/CHANGE CONDITION CODE
-      19/       0 :                    *
-      20/       0 :                    *      P           --  DISPLAY/CHANGE PROGRAM COUNTER
-      21/       0 :                    *
-      22/       0 :                    *      L           --  LOAD TAPE FILE INTO MEMORY
-      23/       0 :                    *
-      24/       0 :                    *      W XXXX YYYY --  WRITE MEMORY TO TAPE FILE
-      25/       0 :                    *
-      26/       0 :                    *      B           --  DISPLAY BREAKPOINTS
-      27/       0 :                    *      B N XXXX    --  SET BREAKPOINT NUMBER N
-      28/       0 :                    *      B N 0       --  CLEAR BREAKPOINT NUMBER N
-      29/       0 :                    *
-      30/       0 :                    *      T           --  TRACE ONE INSTRUCTION
-      31/       0 :                    *      T XXXX      --  TRACE XXX INSTRUCTIONS
-      32/       0 :                    *
-      33/       0 :                    *      M XXXX      --  MEMORY EXAMINE/CHANGE.
-      34/       0 :                    *            TYPE:  ^ -- TO EXAMINE PREVIOUS
-      35/       0 :                    *                  LF -- TO EXAMINE NEXT
-      36/       0 :                    *                  HH -- CHANGE TO HEX DATA
-      37/       0 :                    *                  CR -- TERMINATE COMMAND
-      38/       0 :                    *
-      39/       0 :                    *      G           --  CONTINUE PROGRAM EXECUTION FROM
-      40/       0 :                    *                      CURRENT PROGRAM COUNTER
-      41/       0 :                    *      G XXXX      --  GO EXECUTE PROGRAM AT SPECIFIED
-      42/       0 :                    *                      ADDRESS.
-      43/       0 :                    *
-      44/       0 :                    *************************************************
-      45/       0 :
-      46/       0 :                    *************************************************
-      47/       0 :                    *      MC146805E2 GLOBAL PARAMETERS                *
-      48/       0 :                    *************************************************
-      49/       0 : =1800              MONSTR EQU    $1800    ; START OF MONITOR
-      50/       0 : =1F                PCMASK EQU    $1F      ; MASK OFF FOR BK ADDRESS SPACE (E2)
-      51/       0 : =3                 NUMBKP EQU    3        ; NUMBER OF BREAKPOINTS
-      52/       0 : =17F8              ACIA   EQU    $17F8    ; ACIA ADDRESS
-      53/       0 : =3E                PROMPT EQU    '>       ; PROMPT CHARACTER
-      54/       0 : =8                 TIMER  EQU    8        ; TIMER DATA REGISTER
-      55/       0 : =9                 TIMEC  EQU    9        ; TIMER CONTROL REGISTER
-      56/       0 :
-      57/       0 :                    *************************************************
-      58/       0 :                    *      EQUATES                                  *
-      59/       0 :                    *************************************************
-      60/       0 : =4                 EOT    EQU    $04      ; END OF TEXT
-      61/       0 : =D                 CR     EQU    $0D      ; CARRIAGE RETURN
-      62/       0 : =A                 LF     EQU    $0A      ; LINE FEED
-      63/       0 : =11                DC1    EQU    $11      ; READER ON CONTROL FUNCTION
-      64/       0 : =12                DC2    EQU    $12      ; PUNCH ON CONTROL FUNCTION
-      65/       0 : =13                DC3    EQU    $13      ; X-OFF CONTROL FUNCTION
-      66/       0 : =14                DC4    EQU    $14      ; STOP CONTROL FUNCTION
-      67/       0 : =20                SP     EQU    $20      ; SPACE
-      68/       0 : =7                 BELL   EQU    $07      ; CONTROL-G (BELL)
-      69/       0 : =83                SWIOP  EQU    $83      ; SOFTWARE INTERRUPT OPCODE
-      70/       0 : =CC                JMPOP  EQU    $CC      ; EXTENDED JUMP OPCODE
-      71/       0 :
-      72/       0 :                    *************************************************
-      73/       0 :                    * MONITOR WORK AREA AT STACK BOTTOM
-      74/       0 :                    *************************************************
-      75/      41 :                           ORG    $41      ; BOTTOM OF STACK
-      76/      41 : =38                BKPTBL EQU    *-3*NUMBKP ; BKPT TABLE UNDER STACK BOTTOM
-      77/      41 :                    SWIFLG RMB    1        ; SWI FUNCTION FLAG
-      78/      42 :                    WORK1  RMB    1        ; CHRIN/LOAD/STORE/PUTBYT
-      79/      43 :                    WORK2  RMB    1        ; LOAD/STORE/PUTBYT
-      80/      44 :                    ADDRH  RMB    1        ; HIGH ADDRESS BYTE
-      81/      45 :                    ADDRL  RMB    1        ; LOW ADDRESS BYTE
-      82/      46 :                    WORK3  RMB    1        ; LOAD/STORE/PUNCH
-      83/      47 :                    WORK4  RMB    1        ; STORE/PUNCH
-      84/      48 :                    WORK5  RMB    1        ; TRACE
-      85/      49 :                    WORK6  RMB    1        ; TRACE
-      86/      4A :                    WORK7  RMB    1        ; TRACE
-      87/      4B :                    PNCNT  RMB    1        ; PUNCH BREAKPOINT
-      88/      4C :                    PNRCNT RMB    2        ; PUCNH
-      89/      4E :                    CHKSUM RMB    1        ; PUNCH
-      90/      4F :                    VECRAM RMB    12       ; VECTORS
-      91/      5B :
-      92/    1800 :                           ORG    MONSTR   ; START OF MONITOR
-      93/    1800 :
-      94/    1800 :                    *************************************************
-      95/    1800 :                    * MONITOR BASE STRING/TABLE PAGE
-      96/    1800 :                    * (MUST BE AT THE BEGINNING OF A PAGE)
-      97/    1800 :                    *************************************************
-      98/    1800 : =1800              MBASE  EQU    *        ; START OF WORK PAGE IN ROM
-      99/    1800 :                    * MSGUP MUST BE FIRST IN PAGE
-     100/    1800 : 41 53 53 49 53 54  MSGUP  FCC    /ASSIST05 1.1/ ; FIREUP MESSAGE
-             1806 : 30 35 20 31 2E 31
-     101/    180C : 04                 MSGNUL FCB    EOT      ; END OF STRING
-     102/    180D : 3F 20 45 52 52 4F  MSGERR FCC    /? ERROR ?/
-             1813 : 52 20 3F
-     103/    1816 : 04                        FCB    EOT
-     104/    1817 : 53 31 04           MSGS1  FCB    'S,'1,EOT ; S1 START RECORD TEXT
-     105/    181A : 53 39 30 33 30 30  MSGS9  FCC    /S9030000FC/
-             1820 : 30 30 46 43
-     106/    1824 : 0D                        FCB    CR       ; S9 RECORD TEXT
-     107/    1825 : 14 13 04           MSGMOF FCB    DC4,DC3,EOT ; MOTORS OFF TEXT
-     108/    1828 : 49 53 20 4F 50 43  MSGWAS FCC    /IS OPCODE/
-             182E : 4F 44 45
-     109/    1831 : 04                        FCB    EOT
-     110/    1832 : CC                 VECTAB FCB    JMPOP
-     111/    1833 : 1C 85                     FDB    TIRQ
-     112/    1835 : CC                        FCB    JMPOP
-     113/    1836 : 1C 85                     FDB    TIRQ
-     114/    1838 : CC                        FCB    JMPOP
-     115/    1839 : 1C A1                     FDB    IRQ
-     116/    183B : CC                        FCB    JMPOP
-     117/    183C : 1A 94                     FDB    SWI
-     118/    183E :
-     119/    183E :                    *************************************************
-     120/    183E :                    *      GO --- START EXECUTION
-     121/    183E :                    *************************************************
-     122/    183E : CD 19 A9           CMDG   JSR    GETADR   ; OBTAIN INPUT ADDRESS
-     123/    1841 : 24 14                     BCC    NEXT     ; DO CONTINUE IF NONE
-     124/    1843 : B6 44                     LDA    ADDRH    ; CHECK ADDRESS BOUNDARIES
-     125/    1845 : A1 20                     CMP    #$20     ; FOR OVERRUN
-     126/    1847 : 25 03                     BLO    GADDR
-     127/    1849 : CC 1A 74                  JMP    CMDERR   ; ERROR IF $2000 OR LARGER
-     128/    184C : CD 1B 23           GADDR  JSR    LOCSTK   ; OBTAIN CURRENT STACK ADDRESS-3
-     129/    184F : B6 44                     LDA    ADDRH    ; LOAD PC HIGH
-     130/    1851 : E7 07                     STA    7,X      ; INTO STACK
-     131/    1853 : B6 45                     LDA    ADDRL    ; LOAD PC LOW
-     132/    1855 : E7 08                     STA    8,X      ; INTO STACK
-     133/    1857 : 0E 47 03           NEXT   BRSET  7,WORK4,CONT
-     134/    185A : CC 1A 26                  JMP    CMD
-     135/    185D : CD 1C C3           CONT   JSR    SCNBKP   ; INIT BREAKPOINT SCAN PARAMS
-     136/    1860 : F6                 GOINSB LDA    ,X       ; LOAD HI BYTE
-     137/    1861 : 2B 10                     BMI    GONOB    ; BRA EMPTY
-     138/    1863 : B7 44                     STA    ADDRH    ; STORE HI ADDRESS
-     139/    1865 : E6 01                     LDA    1,X      ; LOAD LOW
-     140/    1867 : B7 45                     STA    ADDRL    ; STORE LOW
-     141/    1869 : CD 19 43                  JSR    LOAD     ; LOAD OPCODE
-     142/    186C : E7 02                     STA    2,X      ; STORE INTO TABLE
-     143/    186E : A6 83                     LDA    #SWIOP   ; REPLACE WITH OPCODE
-     144/    1870 : CD 19 52                  JSR    STORE    ; STORE IN PLACE
-     145/    1873 : 5C                 GONOB  INCX            ; TO
-     146/    1874 : 5C                        INCX            ; NEXT
-     147/    1875 : 5C                        INCX            ; BREAKPOINT
-     148/    1876 : 3A 4B                     DEC    PNCNT    ; COUNT DOWN
-     149/    1878 : 26 E6                     BNE    GOINSB   ; LOOP IF MORE
-     150/    187A : 33 41                     COM    SWIFLG   ; FLAG BREAKPOINTS ARE IN
-     151/    187C :                    ****RESET USERS TIMER ENVIRONMENT*****
-     152/    187C : 80                        RTI             ; RESTART PROGRAM
-     153/    187D :
-     154/    187D :                    *********************************************
-     155/    187D :                    *  CLBYTE - LOAD SUBROUTINE TO READ NEXT    *
-     156/    187D :                    *           BYTE, ADJUST CHECKSUM,          *
-     157/    187D :                    *           DECREMENT COUNT.                *
-     158/    187D :                    * OUTPUT: A=BYTE                            *
-     159/    187D :                    *         CC=REFLECTS COUNT DECREMENT       *
-     160/    187D :                    *********************************************
-     161/    187D : AD 0C              CLBYTE BSR    GETBYT   ; OBTAIN NEXT BYTE
-     162/    187F : 24 57                     BCC    CMDMIN   ; ERROR IF NONE
-     163/    1881 : B7 43                     STA    WORK2    ; SAVE VALUE
-     164/    1883 : BB 4E                     ADD    CHKSUM   ; ADD TO CHECKSUM
-     165/    1885 : B7 4E                     STA    CHKSUM   ; REPLACE
-     166/    1887 : B6 43                     LDA    WORK2    ; RELOAD BYTE VALUE
-     167/    1889 : 5A                        DECX            ; COUNT DOWN
-     168/    188A : 81                        RTS             ; RETURN TO CALLER
-     169/    188B :
-     170/    188B :                    *********************************************
-     171/    188B :                    *  GETBYT - READ BYTE IN HEX SUBROUTINE     *
-     172/    188B :                    * OUTPUT: C=0, Z=1 NO NUMBER                *
-     173/    188B :                    *         C=0, Z=0 INVALID NUMBER           *
-     174/    188B :                    *         C=1, Z=1, A=BINARY BYTE VALUE     *
-     175/    188B :                    *********************************************
-     176/    188B : CD 19 8E           GETBYT JSR    GETNYB   ; GET HEX DIGIT
-     177/    188E : 24 0E                     BCC    GETBRZ   ; RETURN NO NUMBER
-     178/    1890 : 48                 GETBY2 ASLA            ; SHIFT
-     179/    1891 : 48                        ASLA            ; OVER
-     180/    1892 : 48                        ASLA            ; BY
-     181/    1893 : 48                        ASLA            ; FOUR
-     182/    1894 : B7 43                     STA    WORK2    ; SAVE HIGH HEX DIGIT
-     183/    1896 : CD 19 8E                  JSR    GETNYB   ; GET LOW DIGIT
-     184/    1899 : 4D                        TSTA            ; FORCE Z=0 (DELIMITER IF INVALID)
-     185/    189A : 24 04                     BCC    GETBRT   ; RETURN IF INVALID NUMBER
-     186/    189C : BA 43                     ORA    WORK2    ; COMBINE HEX DIGITS
-     187/    189E : 3F 43              GETBRZ CLR    WORK2    ; SET Z=1
-     188/    18A0 : 81                 GETBRT RTS             ; RETURN TO CALLER
-     189/    18A1 :
-     190/    18A1 :                    *********************************************
-     191/    18A1 :                    *  L -- LOAD FILE INTO MEMORY COMMAND       *
-     192/    18A1 :                    *********************************************
-     193/    18A1 : CD 19 D0           CMDL   JSR    CHRIN    ; READ CARRIAGE RETURN
-     194/    18A4 : A6 11                     LDA    #DC1     ; TURN ON READER
-     195/    18A6 : CD 19 EA                  JSR    CHROUT   ; WITH DC1 CONTROL CODE
-     196/    18A9 :                    * SEARCH FOR AN 'S'
-     197/    18A9 : CD 19 D0           CMDLT  JSR    CHRIN    ; READ A CHARACTER
-     198/    18AC : A1 53              CMDLSS CMP    #'S      ; ? 'S'
-     199/    18AE : 26 F9                     BNE    CMDLT    ; LOOP IF NOT
-     200/    18B0 : CD 19 D0                  JSR    CHRIN    ; READ SECOND CHARACTER
-     201/    18B3 : A1 39                     CMP    #'9      ; ? 'S9' RECORD
-     202/    18B5 : 27 24                     BEQ    CLEOF    ; BRANCH END OF FILE
-     203/    18B7 : A1 31                     CMP    #'1      ; ? 'S1' RECORD
-     204/    18B9 : 26 F1                     BNE    CMDLSS   ; NO, TRY 'S' AGAIN
-     205/    18BB :                    * READ ADDRESS AND COUNT
-     206/    18BB : 3F 4E                     CLR    CHKSUM   ; ZERO CHECKSUM
-     207/    18BD : AD BE                     BSR    CLBYTE   ; OBTAIN SIZE OF RECORD
-     208/    18BF : 97                        TAX             ; START COUNTDOWN IN X REGISTER
-     209/    18C0 : AD BB                     BSR    CLBYTE   ; OBTAIN START OF ADDRESS
-     210/    18C2 : B7 44                     STA    ADDRH    ; STORE IT
-     211/    18C4 : AD B7                     BSR    CLBYTE   ; OBTAIN LOW ADDRESS
-     212/    18C6 : B7 45                     STA    ADDRL    ; STORE IT
-     213/    18C8 :                    * NOW LOAD TEXT
-     214/    18C8 : AD B3              CLLOAD BSR    CLBYTE   ; NEXT CHARACTER
-     215/    18CA : 27 08                     BEQ    CLEOR    ; BRANCH IF COUNT DONE
-     216/    18CC : CD 19 52                  JSR    STORE    ; STORE CHARACTER
-     217/    18CF : CD 19 62                  JSR    PTRUP1   ; UP ADDRESS POINTER
-     218/    18D2 : 20 F4                     BRA    CLLOAD   ; LOOP UNTIL COUNT DEPLETED
-     219/    18D4 :                    * END OF RECORD
-     220/    18D4 : 3C 4E              CLEOR  INC    CHKSUM   ; TEST VALID CHECKSUM
-     221/    18D6 : 27 C9                     BEQ    CMDL     ; CONTINUE IF SO
-     222/    18D8 : CC 1A 74           CMDMIN JMP    CMDERR   ; ERROR IF INVALID
-     223/    18DB :                    * END OF FILE
-     224/    18DB : AD A0              CLEOF  BSR    CLBYTE   ; READ S9 LENGTH
-     225/    18DD : 97                        TAX             ; PREPARE S9 FLUSH COUNT
-     226/    18DE : AD 9D              CLEOFL BSR    CLBYTE   ; SKIP HEX PAIR
-     227/    18E0 : 26 FC                     BNE    CLEOFL   ; BRANCH MODE
-     228/    18E2 : AE 25                     LDX    #MSGMOF-MBASE ; TURN MOTORS OUT
-     229/    18E4 : CC 1A 23                  JMP    CMDPDT   ; SEND AND END COMMAND
-     230/    18E7 :
-     231/    18E7 :                    *********************************************
-     232/    18E7 :                    *  M -- EXAMINE/CHANGE MEMORY               *
-     233/    18E7 :                    *  MCHNGE -- REGISTER CHANGE ENTRY POINT    *
-     234/    18E7 :                    *********************************************
-     235/    18E7 : CD 19 A9           CMDM   JSR    GETADR   ; OBTAIN ADDRESS VALUE
-     236/    18EA : 24 EC                     BCC    CMDMIN   ; INVALID IF NO ADDRESS
-     237/    18EC : B6 44                     LDA    ADDRH    ; CHECK ADDRESS
-     238/    18EE : A1 20                     CMP    #$20     ; FOR OVERRUN
-     239/    18F0 : 25 03                     BLO    CMDMLP
-     240/    18F2 : CC 1A 74                  JMP    CMDERR   ; ERROR IF $2000 OR LARGER
-     241/    18F5 : CD 1B 16           CMDMLP JSR    PRTADR   ; PRINT OUT ADDRESS AND SPACE
-     242/    18F8 : AD 49              MCHNGE BSR    LOAD     ; LOAD BYTE INTO A REGISTER
-     243/    18FA : CD 1B 1D                  JSR    CRBYTS   ; PRINT WITH SPACE
-     244/    18FD : CD 19 8E                  JSR    GETNYB   ; SEE IF CHANGE WANTED
-     245/    1900 : 24 0D                     BCC    CMDMDL   ; BRANCH NO
-     246/    1902 : AD 8C                     BSR    GETBY2   ; OBTAIN FULL BYTE
-     247/    1904 : 26 D2                     BNE    CMDMIN   ; TERMINATE IF INVALID HEX
-     248/    1906 : 24 07                     BCC    CMDMDL   ; BRANCH IF OTHER DELIMITER
-     249/    1908 : AD 48                     BSR    STORE    ; STORE NEW VALUE
-     250/    190A : 25 CC                     BCS    CMDMIN   ; BRANCH IF STORE FAILS
-     251/    190C : CD 19 D0                  JSR    CHRIN    ; OBTAIN DELIMITER
-     252/    190F :                    * CHECK OUT DELIMITERS
-     253/    190F : A1 0A              CMDMDL CMP    #LF      ; ? TO NEXT BYTE
-     254/    1911 : 27 1D                     BEQ    CMDMLF   ; BRANCH IF SO
-     255/    1913 : A1 5E                     CMP    #'^      ; ? TO PREVIOUS BYTE
-     256/    1915 : 27 03                     BEQ    CMDMBK   ; BRANCH YES
-     257/    1917 : CC 1A 29                  JMP    CMDNNL   ; ENTER COMMAND HANDLER
-     258/    191A : 3D 45              CMDMBK TST    ADDRL    ; ? LOW BYTE ZERO
-     259/    191C : 26 0C                     BNE    CMDMB2   ; NO, JUST DOWN IT
-     260/    191E : 3A 44                     DEC    ADDRH    ; DOWN HIGH FOR CARRY
-     261/    1920 : B6 44                     LDA    ADDRH    ; CHECK ADDRESS
-     262/    1922 : A1 FF                     CMP    #$FF     ; FOR UNDERFLOW
-     263/    1924 : 26 04                     BNE    CMDMB2
-     264/    1926 : A6 1F                     LDA    #$1F     ; CLEAR ADDRESS ON UNDERFLOW
-     265/    1928 : B7 44                     STA    ADDRH
-     266/    192A : 3A 45              CMDMB2 DEC    ADDRL    ; DOWN LOW BYTE
-     267/    192C : AD 51                     BSR    PCRLF    ; TO NEXT LINE
-     268/    192E : 20 00                     BRA    CMDMLF   ; TO NEXT BYTE
-     269/    1930 : A6 0D              CMDMLF LDA    #CR      ; SEBD JUST CARRIAGE RETURN
-     270/    1932 : CD 19 F2                  JSR    CHROU2   ; OUTPUT IT
-     271/    1935 : AD 2B                     BSR    PTRUP1   ; UP POINTER BY ONE
-     272/    1937 : B6 44                     LDA    ADDRH    ; CHECK ADDRESS
-     273/    1939 : A1 20                     CMP    #$20     ; FOR OVERRUN
-     274/    193B : 25 B8                     BLO    CMDMLP
-     275/    193D : 3F 44                     CLR    ADDRH    ; IF LARGER CLEAR
-     276/    193F : 3F 45                     CLR    ADDRL    ; ADDRESS
-     277/    1941 : 20 B2                     BRA    CMDMLP   ; TO NEXT BYTE
-     278/    1943 :
-     279/    1943 :                    **********************************************
-     280/    1943 :                    *       LOAD - LOAD INTO A FROM ADDRESS IN   *
-     281/    1943 :                    *              POINTER ADDRH/ADDRL           *
-     282/    1943 :                    * INPUT: ADDRH/ADDRL=ADDRESS                 *
-     283/    1943 :                    * OUTPUT: A=BYTE FROM POINTED LOCATION       *
-     284/    1943 :                    * X IS TRANSPARENT                           *
-     285/    1943 :                    * WORK1,WORK2,WORK3 USED                     *
-     286/    1943 :                    **********************************************
-     287/    1943 : BF 42              LOAD   STX    WORK1    ; SAVE X
-     288/    1945 : AE C6                     LDX    #$C6     ; C6=LDA 2-BYTE EXTENDED
-     289/    1947 :
-     290/    1947 : BF 43              LDSTCM STX    WORK2    ; PUT OPCODE IN PLACE
-     291/    1949 : AE 81                     LDX    #$81     ; 81=RTS
-     292/    194B : BF 46                     STX    WORK3    ; NOW THE RETURN
-     293/    194D : BD 43                     JSR    WORK2    ; EXECUTE BUILT ROUTINE
-     294/    194F : BE 42                     LDX    WORK1    ; RESTORE X
-     295/    1951 : 81                        RTS             ; AND EXIT
-     296/    1952 :
-     297/    1952 :                    **********************************************
-     298/    1952 :                    *       STORE - STORE A AT ADDRESS IN POINTER*
-     299/    1952 :                    *               ADDRH/ADDRL                  *
-     300/    1952 :                    * INPUT: A=BYTE TO STORE                     *
-     301/    1952 :                    *        ADDRH/ADDRL=ADDRESS                 *
-     302/    1952 :                    * OUTPUT: C=0 STORE WENT OK                  *
-     303/    1952 :                    *         C=1 STORE DID NOT TAKE (NOT RAM)   *
-     304/    1952 :                    * REGISTERS TRANSPARENT                      *
-     305/    1952 :                    * (A NOT TRANSPARENT ON INVALID STORE)       *
-     306/    1952 :                    * WORK1,WORK2,WORK3,WORK4 USED               *
-     307/    1952 :                    **********************************************
-     308/    1952 : BF 42              STORE  STX    WORK1    ; SAVE X
-     309/    1954 : AE C7                     LDX    #$C7     ; C7=STA 2-EXTENDED
-     310/    1956 : AD EF                     BSR    LDSTCM   ; CALL STORE ROUTINE
-     311/    1958 : B7 47                     STA    WORK4    ; SAVE VALUE STORED
-     312/    195A : AD E7                     BSR    LOAD     ; ATTEMPT LOAD
-     313/    195C : B1 47                     CMP    WORK4    ; ? VALID STORE
-     314/    195E : 27 01                     BEQ    STRTS    ; BRANCH IF VALID
-     315/    1960 : 99                        SEC             ; SHOW INVALID STORE
-     316/    1961 : 81                 STRTS  RTS             ; RETURN
-     317/    1962 :
-     318/    1962 :                    *******************************************
-     319/    1962 :                    *      PTRUP1 - INCREMENT MEMORY POINTER  *
-     320/    1962 :                    *******************************************
-     321/    1962 : 3C 45              PTRUP1 INC    ADDRL    ; INCREMENT LOW BYTE
-     322/    1964 : 26 02                     BNE    PRTRTS   ; NON-ZERO MEANS  NO CARRY
-     323/    1966 : 3C 44                     INC    ADDRH    ; INCREMENT HIGH BYTE
-     324/    1968 : 81                 PRTRTS RTS             ; RETURN TO CALLER
-     325/    1969 :
-     326/    1969 :                    *******************************************
-     327/    1969 :                    *      PUTBYT --- PRINT A IN HEX          *
-     328/    1969 :                    *  X TRANSPARENT                          *
-     329/    1969 :                    *  WORK1 USED                             *
-     330/    1969 :                    *******************************************
-     331/    1969 : B7 42              PUTBYT STA    WORK1    ; SAVE A
-     332/    196B : 44                        LSRA            ; SHIFT TO
-     333/    196C : 44                        LSRA            ; LEFT HEX
-     334/    196D : 44                        LSRA            ; DIGIT
-     335/    196E : 44                        LSRA            ; SHIFT HIGH NYBBLE DOWN
-     336/    196F : AD 02                     BSR    PUTNYB   ; PRINT IT
-     337/    1971 : B6 42                     LDA    WORK1
-     338/    1973 :                    * FALL INTO PUTNYB
-     339/    1973 :
-     340/    1973 :                    *************************************************
-     341/    1973 :                    *      PUTNYB --- PRINT LOWER NYBBLE OF A IN HEX*
-     342/    1973 :                    *  A,X TRANSPARENT                              *
-     343/    1973 :                    *************************************************
-     344/    1973 : A4 0F              PUTNYB AND    #$F      ; MASK OFF HIGH NYBBLE
-     345/    1975 : AB 30                     ADD    #'0      ; ADD ASCII ZERO
-     346/    1977 : A1 39                     CMP    #'9      ; CHECK FOR A-F
-     347/    1979 : 23 6F                     BLS    CHROUT   ; OK, SEND OUT
-     348/    197B : AB 07                     ADD    #'A-'9-1 ; ADJUSTMENT FOR HEX A-F
-     349/    197D : 20 6B                     BRA    CHROUT
-     350/    197F :
-     351/    197F :                    *************************************************
-     352/    197F :                    *  PDATA  - PRINT MONITOR STRING AFTER CR/LF
-     353/    197F :                    *  PDARA1 - PRINT MONITOR STRING
-     354/    197F :                    *  PCRLF  - PRINT CARRIAGE RETURN AND LINE FEED
-     355/    197F :                    * INPUT: X=OFFSET TO STRING IN BASE PAGE (UNUSED FOR PCRLF)
-     356/    197F :                    **************************************************
-     357/    197F : AE 0C              PCRLF  LDX    #MSGNUL-MBASE ; LOAD NULL STRING ADDRESS
-     358/    1981 : A6 0D              PDATA  LDA    #CR      ; PREPARE CARRIAGE RETURN
-     359/    1983 : AD 65              PDLOOP BSR    CHROUT   ; SEND TEXT CHARACTER
-     360/    1985 : D6 18 00           PDATA1 LDA    MBASE,X  ; LOAD NEXT CHARACTER
-     361/    1988 : 5C                        INCX            ; BUMP POINTER UP ONE
-     362/    1989 : A1 04                     CMP    #EOT     ; ? END OF STRING
-     363/    198B : 26 F6                     BNE    PDLOOP   ; BRANCH NO
-     364/    198D : 81                        RTS             ; RETURN DONE
-     365/    198E :
-     366/    198E :                    ******************************************
-     367/    198E :                    * GETNYB - OBTAIN NEXT HEX CHARACTER     *
-     368/    198E :                    * OUTPUT: C=0 NOT HEX INPUT, A=DELIMITER *
-     369/    198E :                    *         C=1 HEX INPUT, A=BINARY VALUE  *
-     370/    198E :                    *  X TRANSPARENT                         *
-     371/    198E :                    *  WORK1 IN USE                          *
-     372/    198E :                    ******************************************
-     373/    198E : CD 19 D0           GETNYB JSR    CHRIN    ; OBTAIN CHARACTER
-     374/    1991 : A1 30                     CMP    #'0      ; ? LOWER THAN ZERO
-     375/    1993 : 25 12                     BLO    GETNCH   ; BRANCH NOT HEX
-     376/    1995 : A1 39                     CMP    #'9      ; ? HIGHER THAN NINE
-     377/    1997 : 23 0A                     BLS    GETNHX   ; BRANCH IF 0 THRU 9
-     378/    1999 : A1 41                     CMP    #'A      ; ? LOWER THAN AN "A"
-     379/    199B : 25 0A                     BLO    GETNCH   ; BRANCH NOT HEX
-     380/    199D : A1 46                     CMP    #'F      ; ? HIGHER THAN AN "F"
-     381/    199F : 22 06                     BHI    GETNCH   ; BRANCH NOT HEX
-     382/    19A1 : A0 07                     SUB    #7       ; ADJUST TO $A OFFSET
-     383/    19A3 : A4 0F              GETNHX AND    #$0F     ; CLEAR ASCII BITS
-     384/    19A5 : 99                        SEC             ; SET CARRY
-     385/    19A6 : 81                        RTS             ; RETURN
-     386/    19A7 : 98                 GETNCH CLC             ; CLER CARRY FOR NO HEX
-     387/    19A8 : 81                        RTS             ; RETURN
-     388/    19A9 :
-     389/    19A9 :                    *****************************************
-     390/    19A9 :                    *     GETADR - BUILD ANY SIZE BINARY    *
-     391/    19A9 :                    *              NUMBER FROM INPUT.       *
-     392/    19A9 :                    *              LEADING BLANKS SKIPPED.  *
-     393/    19A9 :                    * OUTPUT: CC=0 NO NUMBER ENTERED        *
-     394/    19A9 :                    *         CC=1 ADDRH/ADDRL HAS NUMBER   *
-     395/    19A9 :                    *         A=DELIMITER                   *
-     396/    19A9 :                    * A,X VOLATILE                          *
-     397/    19A9 :                    * WORK1 IN USE                          *
-     398/    19A9 :                    *****************************************
-     399/    19A9 : CD 19 E8           GETADR JSR    PUTSP
-     400/    19AC : 3F 44                     CLR    ADDRH    ; CLEAR HIGH BYTE
-     401/    19AE : AD DE                     BSR    GETNYB   ; OBTAIN FIRST HEX VALUE
-     402/    19B0 : 25 06                     BCS    GETGTD   ; BRANCH IF GOT IT
-     403/    19B2 : A1 20                     CMP    #'       ; ? SPACE
-     404/    19B4 : 27 F3                     BEQ    GETADR   ; LOOP IF SO
-     405/    19B6 : 98                        CLC             ; RETURN NO NUMBER
-     406/    19B7 : 81                        RTS             ; RETURN
-     407/    19B8 : B7 45              GETGTD STA    ADDRL    ; INITIALIZE LOW VALUE
-     408/    19BA : AD D2              GETALP BSR    GETNYB   ; OBTAIN NEXT HEX
-     409/    19BC : 24 10                     BCC    GETARG   ; BRANCH IF NONE
-     410/    19BE : 48                        ASLA            ; OVER
-     411/    19BF : 48                        ASLA            ; FOUR
-     412/    19C0 : 48                        ASLA            ; BITS
-     413/    19C1 : 48                        ASLA            ; FOR SHIFT
-     414/    19C2 : AE 04                     LDX    #4       ; LOOP FOUR TIMES
-     415/    19C4 : 48                 GETASF ASLA            ; SHIFT NEXT BIT
-     416/    19C5 : 39 45                     ROL    ADDRL    ; INTO LOW BYTE
-     417/    19C7 : 39 44                     ROL    ADDRH    ; INTO HIGH BYTE
-     418/    19C9 : 5A                        DECX            ; COUNT DOWN
-     419/    19CA : 26 F8                     BNE    GETASF   ; LOOP UNTIL DONE
-     420/    19CC : 20 EC                     BRA    GETALP   ; NOW DO NEXT HEX
-     421/    19CE : 99                 GETARG SEC             ; SHOW NUMBER OBTAINED
-     422/    19CF : 81                        RTS             ; RETURN TO CALLER
-     423/    19D0 :
-     424/    19D0 :                    ******************************************
-     425/    19D0 :                    * CHRIN  -  OBTAIN NEXT INPUT CHARACTER  *
-     426/    19D0 :                    * OUTPUT: A=CHARACTER RECEIVED           *
-     427/    19D0 :                    * X IS TRANSPARENT                       *
-     428/    19D0 :                    * NULLS AND RUBOUTS IGNORED              *
-     429/    19D0 :                    * ALL CHARACTERS ECHOED OUT              *
-     430/    19D0 :                    * WORK1 USED                             *
-     431/    19D0 :                    ******************************************
-     432/    19D0 : C6 17 F8           CHRIN  LDA    ACIA     ; LOAD STATUS REGISTER
-     433/    19D3 : 44                        LSRA            ; CHECK FOR INPUT
-     434/    19D4 : 24 FA                     BCC    CHRIN    ; LOOP UNTIL SOME
-     435/    19D6 : C6 17 F9                  LDA    ACIA+1   ; LOAD CHARACTER
-     436/    19D9 : A4 7F                     AND    #$7F     ; AND OFF PARITY
-     437/    19DB : 27 F3                     BEQ    CHRIN    ; IGNORE NULLS
-     438/    19DD : A1 7F                     CMP    #$7F     ; ? RDEL
-     439/    19DF : 27 EF                     BEQ    CHRIN    ; IGNORE DELETES
-     440/    19E1 : B7 42                     STA    WORK1    ; SAVE CHARACTER
-     441/    19E3 : AD 05                     BSR    CHROUT   ; ECHO CHARACTER
-     442/    19E5 : B6 42                     LDA    WORK1    ; RESTORE CHARACTER
-     443/    19E7 : 81                        RTS             ; RETURN TO CALLER
-     444/    19E8 :
-     445/    19E8 :                    **************************************************
-     446/    19E8 :                    *      PUTS --- PRINT A BLANK (SPACE)            *
-     447/    19E8 :                    *  X UNCHANGED                                   *
-     448/    19E8 :                    **************************************************
-     449/    19E8 : A6 20              PUTSP  LDA    #SP      ; LOAD SPACE
-     450/    19EA :                    * FALL INTO CHROUT
-     451/    19EA :
-     452/    19EA :                    ******************************************
-     453/    19EA :                    * CHROUT  -  SEND CHARACTER TO TERMINAL. *
-     454/    19EA :                    *            A CARRIAGE RETURN HAS AN    *
-     455/    19EA :                    *            ADDED LINE FEED.            *
-     456/    19EA :                    * INPUT: A=ASCII CHARACTER TO SEND       *
-     457/    19EA :                    * A NOT TRANSPARENT                      *
-     458/    19EA :                    ******************************************
-     459/    19EA : A1 0D              CHROUT CMP    #CR      ; ? CARRIAGE RETURN
-     460/    19EC : 26 04                     BNE    CHROU2   ; BRANCH NOT
-     461/    19EE : AD 02                     BSR    CHROU2   ; RECURSIVE CALL FOR CR
-     462/    19F0 : A6 0A                     LDA    #LF      ; NOW SEND LINE FEED
-     463/    19F2 : C7 17 F9           CHROU2 STA    ACIA+1   ; STORE CHARACTER INTO PIC
-     464/    19F5 : C6 17 F8           CHROLP LDA    ACIA     ; LOAD STATUS REGISTER
-     465/    19F8 : A5 02                     BIT    #$02     ; ? READY FOR NEXT
-     466/    19FA : 27 F9                     BEQ    CHROLP   ; LOOP UNTIL READY
-     467/    19FC : 81                        RTS             ; AND RETURN
-     468/    19FD :
-     469/    19FD :                    ******************************************
-     470/    19FD :                    *      RESET --- POWER ON RESET ROUTINE
-     471/    19FD :                    *
-     472/    19FD :                    *  INITIALIZE ACIA, PUT OUT STARTUP MESSAGE
-     473/    19FD :                    ******************************************
-     474/    19FD : AE 0B              RESET  LDX    #11      ; MOVE VECTOR TABLE
-     475/    19FF : D6 18 32           RST    LDA    VECTAB,X ; TO RAM USING A
-     476/    1A02 : E7 4F                     STA    VECRAM,X ; BLOCK MOVE ROUTINE
-     477/    1A04 : 5A                        DECX            ; TO ALLOW CHANGES
-     478/    1A05 : 2A F8                     BPL    RST      ; ON THE FLY
-     479/    1A07 : A6 03                     LDA    #3       ; RESET ACIA
-     480/    1A09 : C7 17 F8                  STA    ACIA     ; TO INITIALIZE
-     481/    1A0C : A6 51                     LDA    #$51     ; 8 BITS-NO PARITY-2 STOP BITS
-     482/    1A0E : C7 17 F8                  STA    ACIA     ; SETUP ACIA PARAMETERS
-     483/    1A11 : CD 1C C3                  JSR    SCNBKP   ; CLEAR BREAKPOINTS
-     484/    1A14 : A6 FF                     LDA    #$FF     ; TURN HIGH BIT ON
-     485/    1A16 : F7                 REBCLR STA    ,X       ; SHOW SLOT EMPTY
-     486/    1A17 : 5C                        INCX            ; TO
-     487/    1A18 : 5C                        INCX            ; NEXT
-     488/    1A19 : 5C                        INCX            ; SLOT
-     489/    1A1A : 3A 4B                     DEC    PNCNT    ; COUNT DOWN
-     490/    1A1C : 26 F8                     BNE    REBCLR   ; CLEAR NEXT
-     491/    1A1E : 3F 41              RESREN CLR    SWIFLG   ; SETUP MONITOR ENTRANCE VALUE
-     492/    1A20 : 83                        SWI             ; ENTER MONITOR
-     493/    1A21 : 20 FB                     BRA    RESREN   ; REENTER IF "G"
-     494/    1A23 :
-     495/    1A23 :                    *******************************************
-     496/    1A23 :                    * COMMAND HANDLER                         *
-     497/    1A23 :                    *******************************************
-     498/    1A23 : CD 19 81           CMDPDT JSR    PDATA    ; SEND MESSAGE OUT
-     499/    1A26 :
-     500/    1A26 : CD 19 7F           CMD    JSR    PCRLF    ; TO NEW LINE
-     501/    1A29 : A6 3E              CMDNNL LDA    #PROMPT  ; READY PROMPT CHR
-     502/    1A2B : AD BD                     BSR    CHROUT   ; SEND IT OUT
-     503/    1A2D : CD 1C A7                  JSR    REMBKP   ; REMOVE BREAKPOINTS IF IN
-     504/    1A30 : AD 9E                     BSR    CHRIN    ; GET NEXT CHARACTER
-     505/    1A32 : 5F                        CLRX            ; ZERO FOR SOME COMMANDS
-     506/    1A33 : A1 43                     CMP    #'C      ; ? DISPLAY/CHANGE C REGISTER
-     507/    1A35 : 27 49                     BEQ    CMDC     ; BRANCH IF SO
-     508/    1A37 : A1 58                     CMP    #'X      ; ? DISPLAY/CHANGE X REGISTER
-     509/    1A39 : 27 43                     BEQ    CMDX     ; BRANCH IF SO
-     510/    1A3B : A1 41                     CMP    #'A      ; ? DISPLAY/CHANGE A REGISTER
-     511/    1A3D : 27 40                     BEQ    CMDA     ; BRANCH IF SO
-     512/    1A3F : A1 52                     CMP    #'R      ; ? REGISTER DISPLAY
-     513/    1A41 : 27 35                     BEQ    REGR     ; BRANCH YES
-     514/    1A43 : A1 4C                     CMP    #'L      ; ? LOAD FILE
-     515/    1A45 : 26 03                     BNE    NOTL     ; NOPE
-     516/    1A47 : CC 18 A1                  JMP    CMDL     ; BRANCH YES
-     517/    1A4A : A1 47              NOTL   CMP    #'G      ; ? GO COMMAND
-     518/    1A4C : 26 05                     BNE    NOTG     ; BRANCH NOT
-     519/    1A4E : 1E 47                     BSET   7,WORK4
-     520/    1A50 : CC 18 3E           ISP    JMP    CMDG     ; GO TO OY
-     521/    1A53 : A1 4D              NOTG   CMP    #'M      ; ? MEMORY COMMAND
-     522/    1A55 : 26 03                     BNE    NOTM     ; BRANCH NOT
-     523/    1A57 : CC 18 E7                  JMP    CMDM     ; GO TO MEMORY DISPLAY/CHANGE
-     524/    1A5A : A1 54              NOTM   CMP    #'T      ; ? TRACE
-     525/    1A5C : 26 03                     BNE    NOTT     ; ERROR IF NOT
-     526/    1A5E : CC 1C 23                  JMP    CMDT     ; GO TO IT
-     527/    1A61 : A1 57              NOTT   CMP    #'W      ; ? WRITE MEMORY
-     528/    1A63 : 26 03                     BNE    NOTW     ; BRANCH NO
-     529/    1A65 : CC 1B 97                  JMP    CMDW     ; GO TO IT
-     530/    1A68 : A1 42              NOTW   CMP    #'B      ; ? BREAKPOINT COMMAND
-     531/    1A6A : 27 0F                     BEQ    BPNT     ; YES
-     532/    1A6C : A1 50                     CMP    #'P      ; ? PC COMMAND
-     533/    1A6E : 26 04                     BNE    CMDERR
-     534/    1A70 : 1F 47                     BCLR   7,WORK4
-     535/    1A72 : 20 DC                     BRA    ISP
-     536/    1A74 : AE 0D              CMDERR LDX    #MSGERR-MBASE ; LOAD ERROR STRNIG
-     537/    1A76 : 20 AB              TOCPDT BRA    CMDPDT   ; AND SEND IT OUT
-     538/    1A78 : CC 1A EE           REGR   JMP    CMDR
-     539/    1A7B : CC 1B 35           BPNT   JMP    CMDB
-     540/    1A7E :
-     541/    1A7E :                    *************************************************
-     542/    1A7E :                    *  X -- DISPLAY/CHANGE X REGISTER               *
-     543/    1A7E :                    *************************************************
-     544/    1A7E : 5C                 CMDX   INCX            ; INCREMENT INDEX
-     545/    1A7F :                    * FALL THROUGH
-     546/    1A7F :
-     547/    1A7F :                    *************************************************
-     548/    1A7F :                    *  A -- DISPLAY/CHANGE A REGISTER
-     549/    1A7F :                    *************************************************
-     550/    1A7F : 5C                 CMDA   INCX            ; INCREMENT INDEX
-     551/    1A80 :                    * FALL THROUGH
-     552/    1A80 :
-     553/    1A80 :                    *************************************************
-     554/    1A80 :                    *  C -- DISPLAY/CHANGE CONDITION CODE REGISTER  *
-     555/    1A80 :                    *************************************************
-     556/    1A80 : CD 19 E8           CMDC   JSR    PUTSP    ; SPACE BEFORE VALUE
-     557/    1A83 : BF 42                     STX    WORK1    ; SAVE INDEX VALUE
-     558/    1A85 : CD 1B 23                  JSR    LOCSTK   ; LOCATE STACK ADDRESS
-     559/    1A88 : 9F                        TXA             ; STACK-2 TO A
-     560/    1A89 : BB 42                     ADD    WORK1    ; ADD PROPER OFFSET
-     561/    1A8B : AB 04                     ADD    #4       ; MAKE UP FOR ADDRESS RETURN DIFFERENCE
-     562/    1A8D : 3F 44                     CLR    ADDRH    ; SETUP ZERO HIGH BYTE
-     563/    1A8F : B7 45                     STA    ADDRL    ; AND SET IN LOW
-     564/    1A91 : CC 18 F8           TOMCHG JMP    MCHNGE   ; NOW ENTER MEMORY CHANGE COMMAND
-     565/    1A94 :
-     566/    1A94 :                    *******************************************
-     567/    1A94 :                    *           S W I  HANDLER                *
-     568/    1A94 :                    * DETERMINE PROCESSING SWIFLG VALUE       *
-     569/    1A94 :                    *******************************************
-     570/    1A94 : 5F                 SWI    CLRX            ; DEFAULT TO STARTUP MESSAGE
-     571/    1A95 : 3D 41                     TST    SWIFLG   ; IS THIS RESET
-     572/    1A97 : 26 04                     BNE    SWICHK   ; IF NOT REMOVE BREAKPOINTS
-     573/    1A99 : 3C 41                     INC    SWIFLG   ; SHOW WE ARE NOW INITIALIZED
-     574/    1A9B : 20 86                     BRA    CMDPDT   ; TO COMMAND HANDLER
-     575/    1A9D : CD 1C C3           SWICHK JSR    SCNBKP
-     576/    1AA0 : F6                 SWIREP LDA    ,X       ; RESTORE OPCODES
-     577/    1AA1 : 2B 0B                     BMI    SWINOB
-     578/    1AA3 : B7 44                     STA    ADDRH
-     579/    1AA5 : E6 01                     LDA    1,X
-     580/    1AA7 : B7 45                     STA    ADDRL
-     581/    1AA9 : E6 02                     LDA    2,X
-     582/    1AAB : CD 19 52                  JSR    STORE
-     583/    1AAE : 5C                 SWINOB INCX
-     584/    1AAF : 5C                        INCX
-     585/    1AB0 : 5C                        INCX
-     586/    1AB1 : 3A 4B                     DEC    PNCNT
-     587/    1AB3 : 26 EB                     BNE    SWIREP
-     588/    1AB5 :                    * TRACE ONE INSTRUCTION IF PC AT BREAKPOINT
-     589/    1AB5 : CD 1B 23                  JSR    LOCSTK   ; FIND STACK
-     590/    1AB8 : E6 08                     LDA    8,X      ; GET PC AND ADJUST
-     591/    1ABA : A0 01                     SUB    #1
-     592/    1ABC : B7 47                     STA    WORK4    ; SAVE PCL
-     593/    1ABE : E6 07                     LDA    7,X
-     594/    1AC0 : A2 00                     SBC    #0
-     595/    1AC2 : B7 46                     STA    WORK3    ; SAVE PCH
-     596/    1AC4 : BF 48                     STX    WORK5    ; SAVE SP
-     597/    1AC6 : CD 1C C3                  JSR    SCNBKP
-     598/    1AC9 : F6                 SWITRY LDA    0,X
-     599/    1ACA : 2B 1B                     BMI    SWICMP
-     600/    1ACC : B1 46                     CMP    WORK3
-     601/    1ACE : 26 17                     BNE    SWICMP
-     602/    1AD0 : E6 01                     LDA    1,X
-     603/    1AD2 : B1 47                     CMP    WORK4
-     604/    1AD4 : 26 11                     BNE    SWICMP
-     605/    1AD6 : BE 48                     LDX    WORK5
-     606/    1AD8 : E7 08                     STA    8,X
-     607/    1ADA : B6 46                     LDA    WORK3
-     608/    1ADC : E7 07                     STA    7,X
-     609/    1ADE : 3F 4A                     CLR    WORK7
-     610/    1AE0 : A6 01                     LDA    #1
-     611/    1AE2 : B7 49                     STA    WORK6
-     612/    1AE4 : CC 1C 32                  JMP    TRACE
-     613/    1AE7 : 5C                 SWICMP INCX
-     614/    1AE8 : 5C                        INCX
-     615/    1AE9 : 5C                        INCX
-     616/    1AEA : 3A 4B                     DEC    PNCNT
-     617/    1AEC : 26 DB                     BNE    SWITRY
-     618/    1AEE :                    * FALL INTO REGISTER DISPLAY FOR BREAKPOINT
-     619/    1AEE :
-     620/    1AEE :                    ***********************************************
-     621/    1AEE :                    * R -- PRINT REGISTERS                        *
-     622/    1AEE :                    ***********************************************
-     623/    1AEE : CD 19 E8           CMDR   JSR    PUTSP    ; SPACE BEFORE DISPLAY
-     624/    1AF1 : AD 30                     BSR    LOCSTK   ; LOCATE STACK-4
-     625/    1AF3 : E6 07                     LDA    7,X      ; OFFSET FOR PC HIGH
-     626/    1AF5 : E7 07                     STA    7,X      ; RESTORE INTO STACK
-     627/    1AF7 : CD 19 69                  JSR    PUTBYT   ; PLACE BYTE OUT
-     628/    1AFA : E6 08                     LDA    8,X      ; OFFSET TO PC LOW
-     629/    1AFC : AD 1F                     BSR    CRBYTS   ; TO HEX AND SPACE
-     630/    1AFE : E6 05                     LDA    5,X      ; NOW AT A REGISTER
-     631/    1B00 : AD 1B                     BSR    CRBYTS   ; TO HEX AND SPACE
-     632/    1B02 : E6 06                     LDA    6,X      ; NOW X
-     633/    1B04 : AD 17                     BSR    CRBYTS   ; HEX AND SPACE
-     634/    1B06 : E6 04                     LDA    4,X      ; NOW CONDITION CODE
-     635/    1B08 : AA E0                     ORA    #$E0     ; SET ON UNUSED BITS
-     636/    1B0A : E7 04                     STA    4,X      ; RESTORE
-     637/    1B0C : AD 0F                     BSR    CRBYTS   ; HEX AND SPACE
-     638/    1B0E : 9F                        TXA             ; STACK POINTER-3
-     639/    1B0F : AB 08                     ADD    #8       ; TO USERS STACKJ POINTER
-     640/    1B11 : AD 0A                     BSR    CRBYTS   ; TO HEX AND SPACE
-     641/    1B13 : CC 1A 26           GTOCMD JMP    CMD      ; BACK TO COMMAND HANDLER
-     642/    1B16 :                    * PRINT ADDRESS SUBROUTINE (X UNCHANGED)
-     643/    1B16 : B6 44              PRTADR LDA    ADDRH    ; LOAD HIGH BYTE
-     644/    1B18 : CD 19 69                  JSR    PUTBYT   ; SEND OUT AS HEX
-     645/    1B1B : B6 45                     LDA    ADDRL    ; LOAD LOW BYTE
-     646/    1B1D : CD 19 69           CRBYTS JSR    PUTBYT   ; PUT OUT IN HEX
-     647/    1B20 : CC 19 E8                  JMP    PUTSP    ; FOLLOW WITH A SPACE
-     648/    1B23 :
-     649/    1B23 :                    ***********************************************
-     650/    1B23 :                    *  LOCSTK - LOCATE CALLERS STACK POINTER      *
-     651/    1B23 :                    * RETURNS X=STACK POINTER-3                   *
-     652/    1B23 :                    * A VOLATILE                                  *
-     653/    1B23 :                    ***********************************************
-     654/    1B23 : AD 01              LOCSTK BSR    LOCST2   ; LEAVE ADDRESS ON STACK
-     655/    1B25 : =1B                STKHI  EQU    */256    ; HI BYTE ON STACK
-     656/    1B25 : =25                STKLOW EQU    *-(*/256)*256 ; LOW BYTE ON STACK
-     657/    1B25 : 81                        RTS             ; RETURN WITH RESULT
-     658/    1B26 : AE 7F              LOCST2 LDX    #$7F     ; LOAD HIGH STACK WORD ADDRESS
-     659/    1B28 : A6 1B              LOCLOP LDA    #STKHI   ; HIGH BYTE FOR COMPARE
-     660/    1B2A : 5A                 LOCDWN DECX            ; TO NEXT LOWER BYTE IN STACK
-     661/    1B2B : F1                        CMP    ,X       ; ? THIS THE SAME
-     662/    1B2C : 26 FC                     BNE    LOCDWN   ; IF NOT TRY NEXT LOWER
-     663/    1B2E : A6 25                     LDA    #STKLOW  ; COMPARE WITH LOW ADDRESS BYTE
-     664/    1B30 : E1 01                     CMP    1,X      ; ? FOUND RETURN ADDRESS
-     665/    1B32 : 26 F4                     BNE    LOCLOP   ; LOOP IF NOT
-     666/    1B34 : 81                        RTS             ; RETURN WITH X SET
-     667/    1B35 :
-     668/    1B35 :                    **********************************************
-     669/    1B35 :                    *  B -- BREAKPOINT CLEAR, SET, OR DISPLAY    *
-     670/    1B35 :                    **********************************************
-     671/    1B35 : CD 19 D0           CMDB   JSR    CHRIN    ; READ NEXT CHARACTER
-     672/    1B38 : A1 20                     CMP    #'       ; ? DISPLAY ONLY
-     673/    1B3A : 26 38                     BNE    BDSPLY   ; BRANCH IF SO
-     674/    1B3C : AD 4F                     BSR    PGTADR   ; OBTAIN BREAKPOINT NUMBER
-     675/    1B3E : 5D                        TSTX            ; ? ANY HIGH BYTE VALUE
-     676/    1B3F : 26 49                     BNE    BKERR    ; ERROR IF SO
-     677/    1B41 : 4A                        DECA            ; DOWN COUNT BY ONE
-     678/    1B42 : A1 03                     CMP    #NUMBKP  ; ? TO HIGH
-     679/    1B44 : 24 44                     BHS    BKERR    ; ERROR IF SO
-     680/    1B46 : 48                        ASLA            ; TIMES TWO
-     681/    1B47 : BB 45                     ADD    ADDRL    ; PLUS ONE FOR THREE TIMES
-     682/    1B49 : AB 38                     ADD    #BKPTBL  ; FIND TABLE ADDRESS
-     683/    1B4B : 4A                        DECA
-     684/    1B4C : B7 43                     STA    WORK2    ; SAVE ADDRESS
-     685/    1B4E : AD 3D                     BSR    PGTADR   ; OBTAIN ADDRESS
-     686/    1B50 : A3 20                     CPX    #$20
-     687/    1B52 : 24 36                     BHS    BKERR
-     688/    1B54 : BE 43                     LDX    WORK2    ; RELOAD ENTRY POINTER
-     689/    1B56 : E7 01                     STA    1,X      ; SAVE LOW ADDRESS
-     690/    1B58 : 26 08                     BNE    BKNOCL   ; BRANCH IF NOT ZERO
-     691/    1B5A : B6 44                     LDA    ADDRH    ; LOAD HIGH ADDRESS
-     692/    1B5C : 26 06                     BNE    BKNCR    ; BRANCH NOT NULL
-     693/    1B5E : 4A                        DECA            ; CREATE NEGATIVE VALUE
-     694/    1B5F : F7                        STA    ,X       ; STORE AS HIGH BYTE
-     695/    1B60 : 20 B1                     BRA    GTOCMD   ; END COMMAND
-     696/    1B62 : B6 44              BKNOCL LDA    ADDRH    ; LOAD HIGH ADDRESS
-     697/    1B64 : F7                 BKNCR  STA    ,X       ; STORE HIGH BYTE
-     698/    1B65 : CD 19 43                  JSR    LOAD     ; LOAD BYTE AT THE ADDRESS
-     699/    1B68 : 43                        COMA            ; INVERT IT
-     700/    1B69 : CD 19 52                  JSR    STORE    ; ATTEMPT STORE
-     701/    1B6C : 25 1C                     BCS    BKERR    ; ERROR IF DID NOT STORE
-     702/    1B6E : 43                        COMA            ; INVERT IT
-     703/    1B6F : CD 19 52                  JSR    STORE    ; STORE IT BACK
-     704/    1B72 : 20 9F                     BRA    GTOCMD   ; END COMMAND
-     705/    1B74 :
-     706/    1B74 :                    * DISPLAY BREAKPOINTS
-     707/    1B74 : CD 1C C3           BDSPLY JSR    SCNBKP   ; PREEPARE SCAN OF TABLE
-     708/    1B77 : F6                 BDSPLP LDA    ,X       ; OBTAIN HIGH BYTE
-     709/    1B78 : 2B 07                     BMI    BDSKP    ; SKIP IF UNUSED SLOT
-     710/    1B7A : CD 19 69                  JSR    PUTBYT   ; PRINT OUT HIGHT BYTE
-     711/    1B7D : E6 01                     LDA    1,X      ; LOAD LOW BYTE
-     712/    1B7F : AD 9C                     BSR    CRBYTS   ; PRINT IT OUT WITH A SPACE
-     713/    1B81 : 5C                 BDSKP  INCX            ; TO
-     714/    1B82 : 5C                        INCX            ; NEXT
-     715/    1B83 : 5C                        INCX            ; ENTRY
-     716/    1B84 : 3A 4B                     DEC    PNCNT    ; COUNT DOWN
-     717/    1B86 : 26 EF                     BNE    BDSPLP   ; LOOP IF MORE
-     718/    1B88 : 20 89                     BRA    GTOCMD   ; END COMMAND
-     719/    1B8A :
-     720/    1B8A : CC 1A 74           BKERR  JMP    CMDERR   ; GIVE ERROR RESPONSE
-     721/    1B8D :
-     722/    1B8D :                    **********************************************
-     723/    1B8D :                    *  W -- WRITE MEMORY TO TAPE FILE S1/S9      *
-     724/    1B8D :                    **********************************************
-     725/    1B8D : CD 19 A9           PGTADR JSR    GETADR   ; OBTAIN INPUT ADDRESS
-     726/    1B90 : 24 F8                     BCC    BKERR    ; ABORT IF NONE
-     727/    1B92 : BE 44                     LDX    ADDRH    ; READY HIGH BYTE
-     728/    1B94 : B6 45                     LDA    ADDRL    ; READY LOW BYTE
-     729/    1B96 : 81                        RTS             ; BACK TO PUNCH COMMAND
-     730/    1B97 :
-     731/    1B97 : AD F4              CMDW   BSR    PGTADR   ; GET STARTING ADDRESS
-     732/    1B99 : A3 20                     CPX    #$20
-     733/    1B9B : 24 ED                     BHS    BKERR
-     734/    1B9D : B7 47                     STA    WORK4    ; INTO WORK4
-     735/    1B9F : BF 46                     STX    WORK3    ; AND WORK3
-     736/    1BA1 : AD EA                     BSR    PGTADR   ; GET ENDING ADDRESS
-     737/    1BA3 : A3 20                     CPX    #$20
-     738/    1BA5 : 24 E3                     BHS    BKERR
-     739/    1BA7 : 4C                        INCA            ; ADD ONE TO INCLUDE TOP BYTE
-     740/    1BA8 : 26 01                     BNE    PUPH     ; BRANCH NO CARRY
-     741/    1BAA : 5C                        INCX            ; UP HIGH BYTE AS WELL
-     742/    1BAB : B0 47              PUPH   SUB    WORK4    ; COMPUTE SIZE
-     743/    1BAD : B7 4D                     STA    PNRCNT+1 ; AND SAVE
-     744/    1BAF : 9F                        TXA             ; NOW
-     745/    1BB0 : B2 46                     SBC    WORK3    ; SIZE HIGH BYTE
-     746/    1BB2 : B7 4C                     STA    PNRCNT   ; AND SAVE
-     747/    1BB4 : B6 47                     LDA    WORK4    ; MOVE
-     748/    1BB6 : B7 45                     STA    ADDRL    ; TO
-     749/    1BB8 : B6 46                     LDA    WORK3    ; MEMORY
-     750/    1BBA : B7 44                     STA    ADDRH    ; POINTER
-     751/    1BBC :                    * ADDR->MEMORY START,  PNRCNT=BYTE COUNT OF AREA
-     752/    1BBC :                    * NOW TURN ON THE PUNCH
-     753/    1BBC : A6 12                     LDA    #DC2     ; PUNCH ON CONTROL
-     754/    1BBE : CD 19 EA                  JSR    CHROUT   ; SEND OUT
-     755/    1BC1 :                    * NOW SEND CR FOLLOWED BY 24 NULLS AND 'S1'
-     756/    1BC1 : AD 53              PREC   BSR    PNCRNL   ; SEND CR/LF ND NULLS
-     757/    1BC3 : AE 17                     LDX    #MSGS1-MBASE ; POINT TO STRING
-     758/    1BC5 : CD 19 85                  JSR    PDATA1   ; SEND 'S1' OUT
-     759/    1BC8 :                    * NOW SEND NEXT 24 BYTES OR LESS IF TO THE END
-     760/    1BC8 : B6 4D                     LDA    PNRCNT+1 ; LOW COUNT LEFT
-     761/    1BCA : A0 18                     SUB    #24      ; MINUS 24
-     762/    1BCC : B7 4D                     STA    PNRCNT+1 ; STORE RESULT
-     763/    1BCE : 24 08                     BCC    PALL24   ; IF NO CARRY THEN OK
-     764/    1BD0 : 3A 4C                     DEC    PNRCNT   ; DOWN HIGH BYTE
-     765/    1BD2 : 2A 04                     BPL    PALL24   ; ALL 24 OK
-     766/    1BD4 : AB 18                     ADD    #24      ; WAS LESS SO BACK UP TO ORIGINAL
-     767/    1BD6 : 20 02                     BRA    PGOTC    ; GO USE COUNT HERE
-     768/    1BD8 : A6 18              PALL24 LDA    #24      ; USE ALL 24
-     769/    1BDA : B7 4B              PGOTC  STA    PNCNT    ; COUNT FOR THIS RECORD
-     770/    1BDC :                    * SEND THE FRAME COUNT AND START CHECKSUMMING
-     771/    1BDC : 3F 4E                     CLR    CHKSUM
-     772/    1BDE : AB 03                     ADD    #3       ; ADJUST FOR COUNT AND ADDRESS
-     773/    1BE0 : AD 2B                     BSR    PUNBYT   ; SEND FRAME COUNT
-     774/    1BE2 :                    * SEND ADDRESS
-     775/    1BE2 : B6 44                     LDA    ADDRH    ; HI BYTE
-     776/    1BE4 : AD 27                     BSR    PUNBYT   ; SEND IT
-     777/    1BE6 : B6 45                     LDA    ADDRL    ; LOW BYTE
-     778/    1BE8 : AD 23                     BSR    PUNBYT   ; SEND IT
-     779/    1BEA :                    * NOW SEND DAT
-     780/    1BEA : CD 19 43           PUNLOP JSR    LOAD     ; LOAD NEXT BYTE
-     781/    1BED : AD 1E                     BSR    PUNBYT   ; SEND IT OUT
-     782/    1BEF : CD 19 62                  JSR    PTRUP1   ; UP ADDRESS BY ONE
-     783/    1BF2 : 3A 4B                     DEC    PNCNT    ; COUNT DOWN
-     784/    1BF4 : 26 F4                     BNE    PUNLOP   ; LOOP UNTIL ZERO
-     785/    1BF6 :                    * SEND OUT THE CHECKSUM
-     786/    1BF6 : B6 4E                     LDA    CHKSUM   ; LOAD CHECKSUM
-     787/    1BF8 : 43                        COMA            ; COMPLETE IT
-     788/    1BF9 : AD 12                     BSR    PUNBYT   ; SEND IT OUT
-     789/    1BFB :                    * LOOP OR SEND S9
-     790/    1BFB : B6 4C                     LDA    PNRCNT   ; ? MINUS
-     791/    1BFD : 2B 04                     BMI    PNEND    ; YES QUIT
-     792/    1BFF : BB 4D                     ADD    PNRCNT+1 ; ? ZERO
-     793/    1C01 : 26 BE                     BNE    PREC     ; NO, DO NEXT RECORD
-     794/    1C03 : AD 11              PNEND  BSR    PNCRNL   ; SEND CR AND NULLS
-     795/    1C05 : AE 1A                     LDX    #MSGS9-MBASE ; LOAD S9 TEXT
-     796/    1C07 : CD 19 85                  JSR    PDATA1   ; SEND AND TO COMMAND HANDLER
-     797/    1C0A : CC 1A 26                  JMP    CMD      ; TO COMMAND HANDLER
-     798/    1C0D :
-     799/    1C0D :                    * SUB TO SEND BYTE IN HEX AND ADJUST CHECKSUM
-     800/    1C0D : 97                 PUNBYT TAX             ; SAVE BYTE
-     801/    1C0E : BB 4E                     ADD    CHKSUM   ; ADD TO CHECKSUM
-     802/    1C10 : B7 4E                     STA    CHKSUM   ; STORE BACK
-     803/    1C12 : 9F                        TXA             ; RESTORE BYTE
-     804/    1C13 : CC 19 69                  JMP    PUTBYT   ; SEND OUT IN HEX
-     805/    1C16 :
-     806/    1C16 :                    * SUB TO SEND CR/LF AND 24 NULLS
-     807/    1C16 : CD 19 7F           PNCRNL JSR    PCRLF    ; SEND CR/LF
-     808/    1C19 : AE 18                     LDX    #24      ; COUNT NULLS
-     809/    1C1B : 4F                 PNULLS CLRA            ; CREATE NULL
-     810/    1C1C : CD 19 EA                  JSR    CHROUT   ; SEND OUT
-     811/    1C1F : 5A                        DECX            ; COUNT DOWN
-     812/    1C20 : 26 F9                     BNE    PNULLS   ; LOOP UNTIL DONE
-     813/    1C22 : 81                        RTS             ; RETURN
-     814/    1C23 :
-     815/    1C23 :                    **********************************************
-     816/    1C23 :                    *  T -- TRACE COMMAND                        *
-     817/    1C23 :                    **********************************************
-     818/    1C23 : A6 01              CMDT   LDA    #1       ; DEFAULT COUNT
-     819/    1C25 : B7 45                     STA    ADDRL    ; TO ONE *GETADR CLEARS ADDRH*
-     820/    1C27 : CD 19 A9                  JSR    GETADR   ; BUILD ADDRESS IF ANY
-     821/    1C2A : B6 44                     LDA    ADDRH    ; SAVE VALUE IN TEMPORARY
-     822/    1C2C : B7 4A                     STA    WORK7    ; LOCATIONS FOR LATER
-     823/    1C2E : B6 45                     LDA    ADDRL    ; USE
-     824/    1C30 : B7 49                     STA    WORK6
-     825/    1C32 :                    * SETUP TIMER TO TRIGGER INTERRUPT
-     826/    1C32 : =1C32              TRACE  EQU    *
-     827/    1C32 : CD 1B 23                  JSR    LOCSTK
-     828/    1C35 : E6 04                     LDA    4,X      ; GET CURRENT USER I-MASK
-     829/    1C37 : A4 08                     AND    #8
-     830/    1C39 : B7 48                     STA    WORK5    ; SAVE IT
-     831/    1C3B : E6 07                     LDA    7,X      ; GET CURRENT USER PC
-     832/    1C3D : B7 44                     STA    ADDRH
-     833/    1C3F : E6 08                     LDA    8,X
-     834/    1C41 : B7 45                     STA    ADDRL
-     835/    1C43 : CD 19 43                  JSR    LOAD     ; GET OPCODE
-     836/    1C46 : A1 83                     CMP    #SWIOP   ; SWI?
-     837/    1C48 : 26 0E                     BNE    TRACE3   ; IF YES THEN
-     838/    1C4A : B6 45                     LDA    ADDRL    ; INC USER PC
-     839/    1C4C : AB 01                     ADD    #1
-     840/    1C4E : E7 08                     STA    8,X
-     841/    1C50 : B6 44                     LDA    ADDRH
-     842/    1C52 : A9 00                     ADC    #0
-     843/    1C54 : E7 07                     STA    7,X
-     844/    1C56 : 20 2D                     BRA    TIRQ     ; CONTINUE TO TRACE
-     845/    1C58 : A1 9B              TRACE3 CMP    #$9B     ; SEI?
-     846/    1C5A : 26 14                     BNE    TRACE2   ; IF YES
-     847/    1C5C : E6 04                     LDA    4,X      ; THEN SET IT IN THE STACK
-     848/    1C5E : AA 08                     ORA    #8
-     849/    1C60 : E7 04                     STA    4,X
-     850/    1C62 : B6 45                     LDA    ADDRL    ; THEN INC USER PC
-     851/    1C64 : AB 01                     ADD    #1
-     852/    1C66 : E7 08                     STA    8,X
-     853/    1C68 : B6 44                     LDA    ADDRH
-     854/    1C6A : A9 00                     ADC    #0
-     855/    1C6C : E7 07                     STA    7,X
-     856/    1C6E : 20 15                     BRA    TIRQ     ; CONTINUE TO TRACE
-     857/    1C70 : A1 9A              TRACE2 CMP    #$9A     ; CLI?
-     858/    1C72 : 26 02                     BNE    TRACE1   ; IF YES THEN
-     859/    1C74 : 3F 48                     CLR    WORK5
-     860/    1C76 : E6 04              TRACE1 LDA    4,X
-     861/    1C78 : A4 F7                     AND    #$F7
-     862/    1C7A : E7 04                     STA    4,X
-     863/    1C7C : A6 10                     LDA    #16      ; THEN SET UP TIMER
-     864/    1C7E : B7 08                     STA    TIMER
-     865/    1C80 : A6 08                     LDA    #8
-     866/    1C82 : B7 09                     STA    TIMEC
-     867/    1C84 : 80                        RTI             ; EXECUTE ONE INSTRUCTION
-     868/    1C85 :
-     869/    1C85 :                    *********************************************
-     870/    1C85 :                    *  TIRQ -- TIMER INTERRUPT ROUTINE          *
-     871/    1C85 :                    *********************************************
-     872/    1C85 : =1C85              TIRQ   EQU    *
-     873/    1C85 :                    *  RESTORE I-MASK TO PROPER STATE
-     874/    1C85 : A6 40                     LDA    #$40
-     875/    1C87 : B7 09                     STA    TIMEC
-     876/    1C89 : CD 1B 23                  JSR    LOCSTK
-     877/    1C8C : E6 04                     LDA    4,X
-     878/    1C8E : BA 48                     ORA    WORK5
-     879/    1C90 : E7 04                     STA    4,X
-     880/    1C92 :                    *  SEE IF MORE TRACING IS DESUIRED
-     881/    1C92 : 3A 49                     DEC    WORK6
-     882/    1C94 : 26 9C                     BNE    TRACE
-     883/    1C96 : 3D 4A                     TST    WORK7
-     884/    1C98 : 27 04                     BEQ    DISREG
-     885/    1C9A : 3A 4A                     DEC    WORK7
-     886/    1C9C : 20 94                     BRA    TRACE
-     887/    1C9E : CC 1A EE           DISREG JMP    CMDR
-     888/    1CA1 :
-     889/    1CA1 :                    *********************************************
-     890/    1CA1 :                    *  INT -- INTERRUPT ROUTINE                 *
-     891/    1CA1 :                    *********************************************
-     892/    1CA1 : =1CA1              IRQ    EQU    *
-     893/    1CA1 : CC 1A 74                  JMP    CMDERR   ; HARDWARE INTERRUPT UNUSED
-     894/    1CA4 :
-     895/    1CA4 :                    **********************************************
-     896/    1CA4 :                    * TWIRQ - TIMER INTERRUPT ROUTINE (WAIT MODE)*
-     897/    1CA4 :                    **********************************************
-     898/    1CA4 : =1CA4              TWIRQ  EQU    *
-     899/    1CA4 : CC 1A 74                  JMP    CMDERR   ; TIMER WAIT INTERRUPT UNUSED
-     900/    1CA7 :
-     901/    1CA7 :                    **********************************************
-     902/    1CA7 :                    *  DELBKP - DELETE BREAKPOINT SUBROUTINE     *
-     903/    1CA7 :                    **********************************************
-     904/    1CA7 : AD 1A              REMBKP BSR    SCNBKP   ; SETUP PARAMETERS
-     905/    1CA9 : 2A 17                     BPL    REMRTS   ; RETURN IF NOT IN
-     906/    1CAB : F6                 REMLOP LDA    ,X       ; LOAD HIGH ADDRESS
-     907/    1CAC : 2B 0B                     BMI    REMNOB   ; SKIP IF NULL
-     908/    1CAE : B7 44                     STA    ADDRH    ; STORE HIGH ADDRESS
-     909/    1CB0 : E6 01                     LDA    1,X      ; LOAD LOW ADDRESS
-     910/    1CB2 : B7 45                     STA    ADDRL    ; STORE IT
-     911/    1CB4 : E6 02                     LDA    2,X      ; LOAD OPCODE
-     912/    1CB6 : CD 19 52                  JSR    STORE    ; STORE IT BACK OVER 'SWI'
-     913/    1CB9 : 5C                 REMNOB INCX            ; TO
-     914/    1CBA : 5C                        INCX            ; NEXT
-     915/    1CBB : 5C                        INCX            ; ENTRY
-     916/    1CBC : 3A 4B                     DEC    PNCNT    ; COUNT DOWN
-     917/    1CBE : 26 EB                     BNE    REMLOP   ; LOOP IF MORE
-     918/    1CC0 : 33 41                     COM    SWIFLG   ; MAKE POSITIVE TO SHOW REMOVED
-     919/    1CC2 : 81                 REMRTS RTS             ; RETURN
-     920/    1CC3 :
-     921/    1CC3 :                    * SETUP FOR BREAKPOINT TABLE SCAN
-     922/    1CC3 : A6 03              SCNBKP LDA    #NUMBKP  ; LOAD NUMBER OF BREAKPOINTS
-     923/    1CC5 : B7 4B                     STA    PNCNT    ; SETUP FOR COUNTDOWN
-     924/    1CC7 : AE 38                     LDX    #BKPTBL  ; LOAD TABLE ADDRESS
-     925/    1CC9 : 3D 41                     TST    SWIFLG   ; TEST IF BREAKPOINTS IN ALREADY
-     926/    1CCB : 81                        RTS             ; RETURN
-     927/    1CCC :
-     928/    1CCC :                    **********************************************
-     929/    1CCC :                    *      INTERRUPT VECTORS                     *
-     930/    1CCC :                    **********************************************
-     931/    1FF6 :                           ORG    MONSTR+$800-$A ; START OF VECTORS
-     932/    1FF6 : 00 4F                     FDB    VECRAM   ; TIMER INTERRUPT HANDLER (WAIT MODE)
-     933/    1FF8 : 00 52                     FDB    VECRAM+3 ; TIMER INTERRUPT HANDLER
-     934/    1FFA : 00 55                     FDB    VECRAM+6 ; INTERRUPT HANDLER
-     935/    1FFC : 00 58                     FDB    VECRAM+9 ; SWI HANDLER
-     936/    1FFE : 19 FD                     FDB    RESET    ; POWER ON VECTOR
-     937/    2000 :
-     938/    2000 :                           END
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 1 - 03/06/2023 12:10:51 PM
+
+
+       1/       0 :                     ;       NAM   ASSIST05
+       2/       0 :                     
+       3/       0 :                     ;***************************************************
+       4/       0 :                     ;*    MONITOR FOR THE AUSTIN 6805 EVALUATION MODULE*
+       5/       0 :                     ;*          (C) COPYRIGHT 1979 MOTOROLA INC.       *
+       6/       0 :                     ;***************************************************
+       7/       0 :                     
+       8/       0 :                     ;**************************************************
+       9/       0 :                     ;*
+      10/       0 :                     ;*      THE MONITOR HAS THE FOLLOWING COMMANDS:
+      11/       0 :                     ;*
+      12/       0 :                     ;*      R           --  PRINT RGEISTERS
+      13/       0 :                     ;*
+      14/       0 :                     ;*      A           --  DISPLAY/CHANGE A REGISTER
+      15/       0 :                     ;*
+      16/       0 :                     ;*      X           --  DISPLAY/CHANGE X REGISTER
+      17/       0 :                     ;*
+      18/       0 :                     ;*      C           --  DISPLAY/CHANGE CONDITION CODE
+      19/       0 :                     ;*
+      20/       0 :                     ;*      P           --  DISPLAY/CHANGE PROGRAM COUNTER
+      21/       0 :                     ;*
+      22/       0 :                     ;*      L           --  LOAD TAPE FILE INTO MEMORY
+      23/       0 :                     ;*
+      24/       0 :                     ;*      W XXXX YYYY --  WRITE MEMORY TO TAPE FILE
+      25/       0 :                     ;*
+      26/       0 :                     ;*      B           --  DISPLAY BREAKPOINTS
+      27/       0 :                     ;*      B N XXXX    --  SET BREAKPOINT NUMBER N
+      28/       0 :                     ;*      B N 0       --  CLEAR BREAKPOINT NUMBER N
+      29/       0 :                     ;*
+      30/       0 :                     ;*      T           --  TRACE ONE INSTRUCTION
+      31/       0 :                     ;*      T XXXX      --  TRACE XXX INSTRUCTIONS
+      32/       0 :                     ;*
+      33/       0 :                     ;*      M XXXX      --  MEMORY EXAMINE/CHANGE.
+      34/       0 :                     ;*            TYPE:  ^ -- TO EXAMINE PREVIOUS
+      35/       0 :                     ;*                  LF -- TO EXAMINE NEXT
+      36/       0 :                     ;*                  HH -- CHANGE TO HEX DATA
+      37/       0 :                     ;*                  CR -- TERMINATE COMMAND
+      38/       0 :                     ;*
+      39/       0 :                     ;*      G           --  CONTINUE PROGRAM EXECUTION FROM
+      40/       0 :                     ;*                      CURRENT PROGRAM COUNTER
+      41/       0 :                     ;*      G XXXX      --  GO EXECUTE PROGRAM AT SPECIFIED
+      42/       0 :                     ;*                      ADDRESS.
+      43/       0 :                     ;*
+      44/       0 :                     ;*************************************************
+      45/       0 :                     
+      46/       0 :                     ;*************************************************
+      47/       0 :                     ;*      MC146805E2 GLOBAL PARAMETERS                *
+      48/       0 :                     ;*************************************************
+      49/       0 : =$1800               MONSTR EQU    $1800    ; START OF MONITOR
+      50/       0 : =$1F                 PCMASK EQU    $1F      ; MASK OFF FOR BK ADDRESS SPACE (E2)
+      51/       0 : =$3                  NUMBKP EQU    3        ; NUMBER OF BREAKPOINTS
+      52/       0 : =$17F8               ACIA   EQU    $17F8    ; ACIA ADDRESS
+      53/       0 : ='>'                 PROMPT EQU    '>'      ; PROMPT CHARACTER
+      54/       0 : =$8                  TIMER  EQU    8        ; TIMER DATA REGISTER
+      55/       0 : =$9                  TIMEC  EQU    9        ; TIMER CONTROL REGISTER
+      56/       0 :                     
+      57/       0 :                     ;*************************************************
+      58/       0 :                     ;*      EQUATES                                  *
+      59/       0 :                     ;*************************************************
+      60/       0 : =$4                  EOT    EQU    $04      ; END OF TEXT
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 2 - 03/06/2023 12:10:51 PM
+
+
+      61/       0 : =$D                  CR     EQU    $0D      ; CARRIAGE RETURN
+      62/       0 : =$A                  LF     EQU    $0A      ; LINE FEED
+      63/       0 : =$11                 DC1    EQU    $11      ; READER ON CONTROL FUNCTION
+      64/       0 : =$12                 DC2    EQU    $12      ; PUNCH ON CONTROL FUNCTION
+      65/       0 : =$13                 DC3    EQU    $13      ; X-OFF CONTROL FUNCTION
+      66/       0 : =$14                 DC4    EQU    $14      ; STOP CONTROL FUNCTION
+      67/       0 : =$20                 SP     EQU    $20      ; SPACE
+      68/       0 : =$7                  BELL   EQU    $07      ; CONTROL-G (BELL)
+      69/       0 : =$83                 SWIOP  EQU    $83      ; SOFTWARE INTERRUPT OPCODE
+      70/       0 : =$CC                 JMPOP  EQU    $CC      ; EXTENDED JUMP OPCODE
+      71/       0 :                     
+      72/       0 :                     ;*************************************************
+      73/       0 :                     ;* MONITOR WORK AREA AT STACK BOTTOM
+      74/       0 :                     ;*************************************************
+      75/      41 :                            ORG    $41      ; BOTTOM OF STACK
+      76/      41 : =$38                 BKPTBL EQU    *-3*NUMBKP ; BKPT TABLE UNDER STACK BOTTOM
+      77/      41 :                     SWIFLG RMB    1        ; SWI FUNCTION FLAG
+      78/      42 :                     WORK1  RMB    1        ; CHRIN/LOAD/STORE/PUTBYT
+      79/      43 :                     WORK2  RMB    1        ; LOAD/STORE/PUTBYT
+      80/      44 :                     ADDRH  RMB    1        ; HIGH ADDRESS BYTE
+      81/      45 :                     ADDRL  RMB    1        ; LOW ADDRESS BYTE
+      82/      46 :                     WORK3  RMB    1        ; LOAD/STORE/PUNCH
+      83/      47 :                     WORK4  RMB    1        ; STORE/PUNCH
+      84/      48 :                     WORK5  RMB    1        ; TRACE
+      85/      49 :                     WORK6  RMB    1        ; TRACE
+      86/      4A :                     WORK7  RMB    1        ; TRACE
+      87/      4B :                     PNCNT  RMB    1        ; PUNCH BREAKPOINT
+      88/      4C :                     PNRCNT RMB    2        ; PUCNH
+      89/      4E :                     CHKSUM RMB    1        ; PUNCH
+      90/      4F :                     VECRAM RMB    12       ; VECTORS
+      91/      5B :                     
+      92/    1800 :                            ORG    MONSTR   ; START OF MONITOR
+      93/    1800 :                     
+      94/    1800 :                     ;*************************************************
+      95/    1800 :                     ;* MONITOR BASE STRING/TABLE PAGE
+      96/    1800 :                     ;* (MUST BE AT THE BEGINNING OF A PAGE)
+      97/    1800 :                     ;*************************************************
+      98/    1800 : =$1800               MBASE  EQU    *        ; START OF WORK PAGE IN ROM
+      99/    1800 :                     ;* MSGUP MUST BE FIRST IN PAGE
+     100/    1800 : 41 53 53 49 53 54   MSGUP  FCC    "ASSIST05 1.1" ; FIREUP MESSAGE
+             1806 : 30 35 20 31 2E 31 
+     101/    180C : 04                  MSGNUL FCB    EOT      ; END OF STRING
+     102/    180D : 3F 20 45 52 52 4F   MSGERR FCC    "? ERROR ?"
+             1813 : 52 20 3F          
+     103/    1816 : 04                         FCB    EOT
+     104/    1817 : 53 31 04            MSGS1  FCB    'S','1',EOT ; S1 START RECORD TEXT
+     105/    181A : 53 39 30 33 30 30   MSGS9  FCC    "S9030000FC"
+             1820 : 30 30 46 43       
+     106/    1824 : 0D                         FCB    CR       ; S9 RECORD TEXT
+     107/    1825 : 14 13 04            MSGMOF FCB    DC4,DC3,EOT ; MOTORS OFF TEXT
+     108/    1828 : 49 53 20 4F 50 43   MSGWAS FCC    "IS OPCODE"
+             182E : 4F 44 45          
+     109/    1831 : 04                         FCB    EOT
+     110/    1832 : CC                  VECTAB FCB    JMPOP
+     111/    1833 : 1C 85                      FDB    TIRQ
+     112/    1835 : CC                         FCB    JMPOP
+     113/    1836 : 1C 85                      FDB    TIRQ
+     114/    1838 : CC                         FCB    JMPOP
+     115/    1839 : 1C A1                      FDB    IRQ
+     116/    183B : CC                         FCB    JMPOP
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 3 - 03/06/2023 12:10:51 PM
+
+
+     117/    183C : 1A 94                      FDB    SWI
+     118/    183E :                     
+     119/    183E :                     ;*************************************************
+     120/    183E :                     ;*      GO --- START EXECUTION
+     121/    183E :                     ;*************************************************
+     122/    183E : CD 19 A9            CMDG   JSR    GETADR   ; OBTAIN INPUT ADDRESS
+     123/    1841 : 24 14                      BCC    NEXT     ; DO CONTINUE IF NONE
+     124/    1843 : B6 44                      LDA    ADDRH    ; CHECK ADDRESS BOUNDARIES
+     125/    1845 : A1 20                      CMP    #$20     ; FOR OVERRUN
+     126/    1847 : 25 03                      BLO    GADDR
+     127/    1849 : CC 1A 74                   JMP    CMDERR   ; ERROR IF $2000 OR LARGER
+     128/    184C : CD 1B 23            GADDR  JSR    LOCSTK   ; OBTAIN CURRENT STACK ADDRESS-3
+     129/    184F : B6 44                      LDA    ADDRH    ; LOAD PC HIGH
+     130/    1851 : E7 07                      STA    7,X      ; INTO STACK
+     131/    1853 : B6 45                      LDA    ADDRL    ; LOAD PC LOW
+     132/    1855 : E7 08                      STA    8,X      ; INTO STACK
+     133/    1857 : 0E 47 03            NEXT   BRSET  7,WORK4,CONT
+     134/    185A : CC 1A 26                   JMP    CMD
+     135/    185D : CD 1C C3            CONT   JSR    SCNBKP   ; INIT BREAKPOINT SCAN PARAMS
+     136/    1860 : F6                  GOINSB LDA    ,X       ; LOAD HI BYTE
+     137/    1861 : 2B 10                      BMI    GONOB    ; BRA EMPTY
+     138/    1863 : B7 44                      STA    ADDRH    ; STORE HI ADDRESS
+     139/    1865 : E6 01                      LDA    1,X      ; LOAD LOW
+     140/    1867 : B7 45                      STA    ADDRL    ; STORE LOW
+     141/    1869 : CD 19 43                   JSR    LOAD     ; LOAD OPCODE
+     142/    186C : E7 02                      STA    2,X      ; STORE INTO TABLE
+     143/    186E : A6 83                      LDA    #SWIOP   ; REPLACE WITH OPCODE
+     144/    1870 : CD 19 52                   JSR    STORE    ; STORE IN PLACE
+     145/    1873 : 5C                  GONOB  INCX            ; TO
+     146/    1874 : 5C                         INCX            ; NEXT
+     147/    1875 : 5C                         INCX            ; BREAKPOINT
+     148/    1876 : 3A 4B                      DEC    PNCNT    ; COUNT DOWN
+     149/    1878 : 26 E6                      BNE    GOINSB   ; LOOP IF MORE
+     150/    187A : 33 41                      COM    SWIFLG   ; FLAG BREAKPOINTS ARE IN
+     151/    187C :                     ;****RESET USERS TIMER ENVIRONMENT*****
+     152/    187C : 80                         RTI             ; RESTART PROGRAM
+     153/    187D :                     
+     154/    187D :                     ;*********************************************
+     155/    187D :                     ;*  CLBYTE - LOAD SUBROUTINE TO READ NEXT    *
+     156/    187D :                     ;*           BYTE, ADJUST CHECKSUM,          *
+     157/    187D :                     ;*           DECREMENT COUNT.                *
+     158/    187D :                     ;* OUTPUT: A=BYTE                            *
+     159/    187D :                     ;*         CC=REFLECTS COUNT DECREMENT       *
+     160/    187D :                     ;*********************************************
+     161/    187D : AD 0C               CLBYTE BSR    GETBYT   ; OBTAIN NEXT BYTE
+     162/    187F : 24 57                      BCC    CMDMIN   ; ERROR IF NONE
+     163/    1881 : B7 43                      STA    WORK2    ; SAVE VALUE
+     164/    1883 : BB 4E                      ADD    CHKSUM   ; ADD TO CHECKSUM
+     165/    1885 : B7 4E                      STA    CHKSUM   ; REPLACE
+     166/    1887 : B6 43                      LDA    WORK2    ; RELOAD BYTE VALUE
+     167/    1889 : 5A                         DECX            ; COUNT DOWN
+     168/    188A : 81                         RTS             ; RETURN TO CALLER
+     169/    188B :                     
+     170/    188B :                     ;*********************************************
+     171/    188B :                     ;*  GETBYT - READ BYTE IN HEX SUBROUTINE     *
+     172/    188B :                     ;* OUTPUT: C=0, Z=1 NO NUMBER                *
+     173/    188B :                     ;*         C=0, Z=0 INVALID NUMBER           *
+     174/    188B :                     ;*         C=1, Z=1, A=BINARY BYTE VALUE     *
+     175/    188B :                     ;*********************************************
+     176/    188B : CD 19 8E            GETBYT JSR    GETNYB   ; GET HEX DIGIT
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 4 - 03/06/2023 12:10:51 PM
+
+
+     177/    188E : 24 0E                      BCC    GETBRZ   ; RETURN NO NUMBER
+     178/    1890 : 48                  GETBY2 ASLA            ; SHIFT
+     179/    1891 : 48                         ASLA            ; OVER
+     180/    1892 : 48                         ASLA            ; BY
+     181/    1893 : 48                         ASLA            ; FOUR
+     182/    1894 : B7 43                      STA    WORK2    ; SAVE HIGH HEX DIGIT
+     183/    1896 : CD 19 8E                   JSR    GETNYB   ; GET LOW DIGIT
+     184/    1899 : 4D                         TSTA            ; FORCE Z=0 (DELIMITER IF INVALID)
+     185/    189A : 24 04                      BCC    GETBRT   ; RETURN IF INVALID NUMBER
+     186/    189C : BA 43                      ORA    WORK2    ; COMBINE HEX DIGITS
+     187/    189E : 3F 43               GETBRZ CLR    WORK2    ; SET Z=1
+     188/    18A0 : 81                  GETBRT RTS             ; RETURN TO CALLER
+     189/    18A1 :                     
+     190/    18A1 :                     ;*********************************************
+     191/    18A1 :                     ;*  L -- LOAD FILE INTO MEMORY COMMAND       *
+     192/    18A1 :                     ;*********************************************
+     193/    18A1 : CD 19 D0            CMDL   JSR    CHRIN    ; READ CARRIAGE RETURN
+     194/    18A4 : A6 11                      LDA    #DC1     ; TURN ON READER
+     195/    18A6 : CD 19 EA                   JSR    CHROUT   ; WITH DC1 CONTROL CODE
+     196/    18A9 :                     ;* SEARCH FOR AN 'S'
+     197/    18A9 : CD 19 D0            CMDLT  JSR    CHRIN    ; READ A CHARACTER
+     198/    18AC : A1 53               CMDLSS CMP    #'S'     ; ? 'S'
+     199/    18AE : 26 F9                      BNE    CMDLT    ; LOOP IF NOT
+     200/    18B0 : CD 19 D0                   JSR    CHRIN    ; READ SECOND CHARACTER
+     201/    18B3 : A1 39                      CMP    #'9'     ; ? 'S9' RECORD
+     202/    18B5 : 27 24                      BEQ    CLEOF    ; BRANCH END OF FILE
+     203/    18B7 : A1 31                      CMP    #'1'     ; ? 'S1' RECORD
+     204/    18B9 : 26 F1                      BNE    CMDLSS   ; NO, TRY 'S' AGAIN
+     205/    18BB :                     ;* READ ADDRESS AND COUNT
+     206/    18BB : 3F 4E                      CLR    CHKSUM   ; ZERO CHECKSUM
+     207/    18BD : AD BE                      BSR    CLBYTE   ; OBTAIN SIZE OF RECORD
+     208/    18BF : 97                         TAX             ; START COUNTDOWN IN X REGISTER
+     209/    18C0 : AD BB                      BSR    CLBYTE   ; OBTAIN START OF ADDRESS
+     210/    18C2 : B7 44                      STA    ADDRH    ; STORE IT
+     211/    18C4 : AD B7                      BSR    CLBYTE   ; OBTAIN LOW ADDRESS
+     212/    18C6 : B7 45                      STA    ADDRL    ; STORE IT
+     213/    18C8 :                     ;* NOW LOAD TEXT
+     214/    18C8 : AD B3               CLLOAD BSR    CLBYTE   ; NEXT CHARACTER
+     215/    18CA : 27 08                      BEQ    CLEOR    ; BRANCH IF COUNT DONE
+     216/    18CC : CD 19 52                   JSR    STORE    ; STORE CHARACTER
+     217/    18CF : CD 19 62                   JSR    PTRUP1   ; UP ADDRESS POINTER
+     218/    18D2 : 20 F4                      BRA    CLLOAD   ; LOOP UNTIL COUNT DEPLETED
+     219/    18D4 :                     ;* END OF RECORD
+     220/    18D4 : 3C 4E               CLEOR  INC    CHKSUM   ; TEST VALID CHECKSUM
+     221/    18D6 : 27 C9                      BEQ    CMDL     ; CONTINUE IF SO
+     222/    18D8 : CC 1A 74            CMDMIN JMP    CMDERR   ; ERROR IF INVALID
+     223/    18DB :                     ;* END OF FILE
+     224/    18DB : AD A0               CLEOF  BSR    CLBYTE   ; READ S9 LENGTH
+     225/    18DD : 97                         TAX             ; PREPARE S9 FLUSH COUNT
+     226/    18DE : AD 9D               CLEOFL BSR    CLBYTE   ; SKIP HEX PAIR
+     227/    18E0 : 26 FC                      BNE    CLEOFL   ; BRANCH MODE
+     228/    18E2 : AE 25                      LDX    #MSGMOF-MBASE ; TURN MOTORS OUT
+     229/    18E4 : CC 1A 23                   JMP    CMDPDT   ; SEND AND END COMMAND
+     230/    18E7 :                     
+     231/    18E7 :                     ;*********************************************
+     232/    18E7 :                     ;*  M -- EXAMINE/CHANGE MEMORY               *
+     233/    18E7 :                     ;*  MCHNGE -- REGISTER CHANGE ENTRY POINT    *
+     234/    18E7 :                     ;*********************************************
+     235/    18E7 : CD 19 A9            CMDM   JSR    GETADR   ; OBTAIN ADDRESS VALUE
+     236/    18EA : 24 EC                      BCC    CMDMIN   ; INVALID IF NO ADDRESS
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 5 - 03/06/2023 12:10:51 PM
+
+
+     237/    18EC : B6 44                      LDA    ADDRH    ; CHECK ADDRESS
+     238/    18EE : A1 20                      CMP    #$20     ; FOR OVERRUN
+     239/    18F0 : 25 03                      BLO    CMDMLP
+     240/    18F2 : CC 1A 74                   JMP    CMDERR   ; ERROR IF $2000 OR LARGER
+     241/    18F5 : CD 1B 16            CMDMLP JSR    PRTADR   ; PRINT OUT ADDRESS AND SPACE
+     242/    18F8 : AD 49               MCHNGE BSR    LOAD     ; LOAD BYTE INTO A REGISTER
+     243/    18FA : CD 1B 1D                   JSR    CRBYTS   ; PRINT WITH SPACE
+     244/    18FD : CD 19 8E                   JSR    GETNYB   ; SEE IF CHANGE WANTED
+     245/    1900 : 24 0D                      BCC    CMDMDL   ; BRANCH NO
+     246/    1902 : AD 8C                      BSR    GETBY2   ; OBTAIN FULL BYTE
+     247/    1904 : 26 D2                      BNE    CMDMIN   ; TERMINATE IF INVALID HEX
+     248/    1906 : 24 07                      BCC    CMDMDL   ; BRANCH IF OTHER DELIMITER
+     249/    1908 : AD 48                      BSR    STORE    ; STORE NEW VALUE
+     250/    190A : 25 CC                      BCS    CMDMIN   ; BRANCH IF STORE FAILS
+     251/    190C : CD 19 D0                   JSR    CHRIN    ; OBTAIN DELIMITER
+     252/    190F :                     ;* CHECK OUT DELIMITERS
+     253/    190F : A1 0A               CMDMDL CMP    #LF      ; ? TO NEXT BYTE
+     254/    1911 : 27 1D                      BEQ    CMDMLF   ; BRANCH IF SO
+     255/    1913 : A1 5E                      CMP    #'^'     ; ? TO PREVIOUS BYTE
+     256/    1915 : 27 03                      BEQ    CMDMBK   ; BRANCH YES
+     257/    1917 : CC 1A 29                   JMP    CMDNNL   ; ENTER COMMAND HANDLER
+     258/    191A : 3D 45               CMDMBK TST    ADDRL    ; ? LOW BYTE ZERO
+     259/    191C : 26 0C                      BNE    CMDMB2   ; NO, JUST DOWN IT
+     260/    191E : 3A 44                      DEC    ADDRH    ; DOWN HIGH FOR CARRY
+     261/    1920 : B6 44                      LDA    ADDRH    ; CHECK ADDRESS
+     262/    1922 : A1 FF                      CMP    #$FF     ; FOR UNDERFLOW
+     263/    1924 : 26 04                      BNE    CMDMB2
+     264/    1926 : A6 1F                      LDA    #$1F     ; CLEAR ADDRESS ON UNDERFLOW
+     265/    1928 : B7 44                      STA    ADDRH
+     266/    192A : 3A 45               CMDMB2 DEC    ADDRL    ; DOWN LOW BYTE
+     267/    192C : AD 51                      BSR    PCRLF    ; TO NEXT LINE
+     268/    192E : 20 00                      BRA    CMDMLF   ; TO NEXT BYTE
+     269/    1930 : A6 0D               CMDMLF LDA    #CR      ; SEBD JUST CARRIAGE RETURN
+     270/    1932 : CD 19 F2                   JSR    CHROU2   ; OUTPUT IT
+     271/    1935 : AD 2B                      BSR    PTRUP1   ; UP POINTER BY ONE
+     272/    1937 : B6 44                      LDA    ADDRH    ; CHECK ADDRESS
+     273/    1939 : A1 20                      CMP    #$20     ; FOR OVERRUN
+     274/    193B : 25 B8                      BLO    CMDMLP
+     275/    193D : 3F 44                      CLR    ADDRH    ; IF LARGER CLEAR
+     276/    193F : 3F 45                      CLR    ADDRL    ; ADDRESS
+     277/    1941 : 20 B2                      BRA    CMDMLP   ; TO NEXT BYTE
+     278/    1943 :                     
+     279/    1943 :                     ;**********************************************
+     280/    1943 :                     ;*       LOAD - LOAD INTO A FROM ADDRESS IN   *
+     281/    1943 :                     ;*              POINTER ADDRH/ADDRL           *
+     282/    1943 :                     ;* INPUT: ADDRH/ADDRL=ADDRESS                 *
+     283/    1943 :                     ;* OUTPUT: A=BYTE FROM POINTED LOCATION       *
+     284/    1943 :                     ;* X IS TRANSPARENT                           *
+     285/    1943 :                     ;* WORK1,WORK2,WORK3 USED                     *
+     286/    1943 :                     ;**********************************************
+     287/    1943 : BF 42               LOAD   STX    WORK1    ; SAVE X
+     288/    1945 : AE C6                      LDX    #$C6     ; C6=LDA 2-BYTE EXTENDED
+     289/    1947 :                     
+     290/    1947 : BF 43               LDSTCM STX    WORK2    ; PUT OPCODE IN PLACE
+     291/    1949 : AE 81                      LDX    #$81     ; 81=RTS
+     292/    194B : BF 46                      STX    WORK3    ; NOW THE RETURN
+     293/    194D : BD 43                      JSR    WORK2    ; EXECUTE BUILT ROUTINE
+     294/    194F : BE 42                      LDX    WORK1    ; RESTORE X
+     295/    1951 : 81                         RTS             ; AND EXIT
+     296/    1952 :                     
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 6 - 03/06/2023 12:10:51 PM
+
+
+     297/    1952 :                     ;**********************************************
+     298/    1952 :                     ;*       STORE - STORE A AT ADDRESS IN POINTER*
+     299/    1952 :                     ;*               ADDRH/ADDRL                  *
+     300/    1952 :                     ;* INPUT: A=BYTE TO STORE                     *
+     301/    1952 :                     ;*        ADDRH/ADDRL=ADDRESS                 *
+     302/    1952 :                     ;* OUTPUT: C=0 STORE WENT OK                  *
+     303/    1952 :                     ;*         C=1 STORE DID NOT TAKE (NOT RAM)   *
+     304/    1952 :                     ;* REGISTERS TRANSPARENT                      *
+     305/    1952 :                     ;* (A NOT TRANSPARENT ON INVALID STORE)       *
+     306/    1952 :                     ;* WORK1,WORK2,WORK3,WORK4 USED               *
+     307/    1952 :                     ;**********************************************
+     308/    1952 : BF 42               STORE  STX    WORK1    ; SAVE X
+     309/    1954 : AE C7                      LDX    #$C7     ; C7=STA 2-EXTENDED
+     310/    1956 : AD EF                      BSR    LDSTCM   ; CALL STORE ROUTINE
+     311/    1958 : B7 47                      STA    WORK4    ; SAVE VALUE STORED
+     312/    195A : AD E7                      BSR    LOAD     ; ATTEMPT LOAD
+     313/    195C : B1 47                      CMP    WORK4    ; ? VALID STORE
+     314/    195E : 27 01                      BEQ    STRTS    ; BRANCH IF VALID
+     315/    1960 : 99                         SEC             ; SHOW INVALID STORE
+     316/    1961 : 81                  STRTS  RTS             ; RETURN
+     317/    1962 :                     
+     318/    1962 :                     ;*******************************************
+     319/    1962 :                     ;*      PTRUP1 - INCREMENT MEMORY POINTER  *
+     320/    1962 :                     ;*******************************************
+     321/    1962 : 3C 45               PTRUP1 INC    ADDRL    ; INCREMENT LOW BYTE
+     322/    1964 : 26 02                      BNE    PRTRTS   ; NON-ZERO MEANS  NO CARRY
+     323/    1966 : 3C 44                      INC    ADDRH    ; INCREMENT HIGH BYTE
+     324/    1968 : 81                  PRTRTS RTS             ; RETURN TO CALLER
+     325/    1969 :                     
+     326/    1969 :                     ;*******************************************
+     327/    1969 :                     ;*      PUTBYT --- PRINT A IN HEX          *
+     328/    1969 :                     ;*  X TRANSPARENT                          *
+     329/    1969 :                     ;*  WORK1 USED                             *
+     330/    1969 :                     ;*******************************************
+     331/    1969 : B7 42               PUTBYT STA    WORK1    ; SAVE A
+     332/    196B : 44                         LSRA            ; SHIFT TO
+     333/    196C : 44                         LSRA            ; LEFT HEX
+     334/    196D : 44                         LSRA            ; DIGIT
+     335/    196E : 44                         LSRA            ; SHIFT HIGH NYBBLE DOWN
+     336/    196F : AD 02                      BSR    PUTNYB   ; PRINT IT
+     337/    1971 : B6 42                      LDA    WORK1
+     338/    1973 :                     ;* FALL INTO PUTNYB
+     339/    1973 :                     
+     340/    1973 :                     ;*************************************************
+     341/    1973 :                     ;*      PUTNYB --- PRINT LOWER NYBBLE OF A IN HEX*
+     342/    1973 :                     ;*  A,X TRANSPARENT                              *
+     343/    1973 :                     ;*************************************************
+     344/    1973 : A4 0F               PUTNYB AND    #$F      ; MASK OFF HIGH NYBBLE
+     345/    1975 : AB 30                      ADD    #'0'     ; ADD ASCII ZERO
+     346/    1977 : A1 39                      CMP    #'9'     ; CHECK FOR A-F
+     347/    1979 : 23 6F                      BLS    CHROUT   ; OK, SEND OUT
+     348/    197B : AB 07                      ADD    #'A'-'9'-1 ; ADJUSTMENT FOR HEX A-F
+     349/    197D : 20 6B                      BRA    CHROUT
+     350/    197F :                     
+     351/    197F :                     ;*************************************************
+     352/    197F :                     ;*  PDATA  - PRINT MONITOR STRING AFTER CR/LF
+     353/    197F :                     ;*  PDARA1 - PRINT MONITOR STRING
+     354/    197F :                     ;*  PCRLF  - PRINT CARRIAGE RETURN AND LINE FEED
+     355/    197F :                     ;* INPUT: X=OFFSET TO STRING IN BASE PAGE (UNUSED FOR PCRLF)
+     356/    197F :                     ;**************************************************
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 7 - 03/06/2023 12:10:51 PM
+
+
+     357/    197F : AE 0C               PCRLF  LDX    #MSGNUL-MBASE ; LOAD NULL STRING ADDRESS
+     358/    1981 : A6 0D               PDATA  LDA    #CR      ; PREPARE CARRIAGE RETURN
+     359/    1983 : AD 65               PDLOOP BSR    CHROUT   ; SEND TEXT CHARACTER
+     360/    1985 : D6 18 00            PDATA1 LDA    MBASE,X  ; LOAD NEXT CHARACTER
+     361/    1988 : 5C                         INCX            ; BUMP POINTER UP ONE
+     362/    1989 : A1 04                      CMP    #EOT     ; ? END OF STRING
+     363/    198B : 26 F6                      BNE    PDLOOP   ; BRANCH NO
+     364/    198D : 81                         RTS             ; RETURN DONE
+     365/    198E :                     
+     366/    198E :                     ;******************************************
+     367/    198E :                     ;* GETNYB - OBTAIN NEXT HEX CHARACTER     *
+     368/    198E :                     ;* OUTPUT: C=0 NOT HEX INPUT, A=DELIMITER *
+     369/    198E :                     ;*         C=1 HEX INPUT, A=BINARY VALUE  *
+     370/    198E :                     ;*  X TRANSPARENT                         *
+     371/    198E :                     ;*  WORK1 IN USE                          *
+     372/    198E :                     ;******************************************
+     373/    198E : CD 19 D0            GETNYB JSR    CHRIN    ; OBTAIN CHARACTER
+     374/    1991 : A1 30                      CMP    #'0'     ; ? LOWER THAN ZERO
+     375/    1993 : 25 12                      BLO    GETNCH   ; BRANCH NOT HEX
+     376/    1995 : A1 39                      CMP    #'9'     ; ? HIGHER THAN NINE
+     377/    1997 : 23 0A                      BLS    GETNHX   ; BRANCH IF 0 THRU 9
+     378/    1999 : A1 41                      CMP    #'A'     ; ? LOWER THAN AN "A"
+     379/    199B : 25 0A                      BLO    GETNCH   ; BRANCH NOT HEX
+     380/    199D : A1 46                      CMP    #'F'     ; ? HIGHER THAN AN "F"
+     381/    199F : 22 06                      BHI    GETNCH   ; BRANCH NOT HEX
+     382/    19A1 : A0 07                      SUB    #7       ; ADJUST TO $A OFFSET
+     383/    19A3 : A4 0F               GETNHX AND    #$0F     ; CLEAR ASCII BITS
+     384/    19A5 : 99                         SEC             ; SET CARRY
+     385/    19A6 : 81                         RTS             ; RETURN
+     386/    19A7 : 98                  GETNCH CLC             ; CLER CARRY FOR NO HEX
+     387/    19A8 : 81                         RTS             ; RETURN
+     388/    19A9 :                     
+     389/    19A9 :                     ;*****************************************
+     390/    19A9 :                     ;*     GETADR - BUILD ANY SIZE BINARY    *
+     391/    19A9 :                     ;*              NUMBER FROM INPUT.       *
+     392/    19A9 :                     ;*              LEADING BLANKS SKIPPED.  *
+     393/    19A9 :                     ;* OUTPUT: CC=0 NO NUMBER ENTERED        *
+     394/    19A9 :                     ;*         CC=1 ADDRH/ADDRL HAS NUMBER   *
+     395/    19A9 :                     ;*         A=DELIMITER                   *
+     396/    19A9 :                     ;* A,X VOLATILE                          *
+     397/    19A9 :                     ;* WORK1 IN USE                          *
+     398/    19A9 :                     ;*****************************************
+     399/    19A9 : CD 19 E8            GETADR JSR    PUTSP
+     400/    19AC : 3F 44                      CLR    ADDRH    ; CLEAR HIGH BYTE
+     401/    19AE : AD DE                      BSR    GETNYB   ; OBTAIN FIRST HEX VALUE
+     402/    19B0 : 25 06                      BCS    GETGTD   ; BRANCH IF GOT IT
+     403/    19B2 : A1 20                      CMP    #' '     ; ? SPACE
+     404/    19B4 : 27 F3                      BEQ    GETADR   ; LOOP IF SO
+     405/    19B6 : 98                         CLC             ; RETURN NO NUMBER
+     406/    19B7 : 81                         RTS             ; RETURN
+     407/    19B8 : B7 45               GETGTD STA    ADDRL    ; INITIALIZE LOW VALUE
+     408/    19BA : AD D2               GETALP BSR    GETNYB   ; OBTAIN NEXT HEX
+     409/    19BC : 24 10                      BCC    GETARG   ; BRANCH IF NONE
+     410/    19BE : 48                         ASLA            ; OVER
+     411/    19BF : 48                         ASLA            ; FOUR
+     412/    19C0 : 48                         ASLA            ; BITS
+     413/    19C1 : 48                         ASLA            ; FOR SHIFT
+     414/    19C2 : AE 04                      LDX    #4       ; LOOP FOUR TIMES
+     415/    19C4 : 48                  GETASF ASLA            ; SHIFT NEXT BIT
+     416/    19C5 : 39 45                      ROL    ADDRL    ; INTO LOW BYTE
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 8 - 03/06/2023 12:10:51 PM
+
+
+     417/    19C7 : 39 44                      ROL    ADDRH    ; INTO HIGH BYTE
+     418/    19C9 : 5A                         DECX            ; COUNT DOWN
+     419/    19CA : 26 F8                      BNE    GETASF   ; LOOP UNTIL DONE
+     420/    19CC : 20 EC                      BRA    GETALP   ; NOW DO NEXT HEX
+     421/    19CE : 99                  GETARG SEC             ; SHOW NUMBER OBTAINED
+     422/    19CF : 81                         RTS             ; RETURN TO CALLER
+     423/    19D0 :                     
+     424/    19D0 :                     ;******************************************
+     425/    19D0 :                     ;* CHRIN  -  OBTAIN NEXT INPUT CHARACTER  *
+     426/    19D0 :                     ;* OUTPUT: A=CHARACTER RECEIVED           *
+     427/    19D0 :                     ;* X IS TRANSPARENT                       *
+     428/    19D0 :                     ;* NULLS AND RUBOUTS IGNORED              *
+     429/    19D0 :                     ;* ALL CHARACTERS ECHOED OUT              *
+     430/    19D0 :                     ;* WORK1 USED                             *
+     431/    19D0 :                     ;******************************************
+     432/    19D0 : C6 17 F8            CHRIN  LDA    ACIA     ; LOAD STATUS REGISTER
+     433/    19D3 : 44                         LSRA            ; CHECK FOR INPUT
+     434/    19D4 : 24 FA                      BCC    CHRIN    ; LOOP UNTIL SOME
+     435/    19D6 : C6 17 F9                   LDA    ACIA+1   ; LOAD CHARACTER
+     436/    19D9 : A4 7F                      AND    #$7F     ; AND OFF PARITY
+     437/    19DB : 27 F3                      BEQ    CHRIN    ; IGNORE NULLS
+     438/    19DD : A1 7F                      CMP    #$7F     ; ? RDEL
+     439/    19DF : 27 EF                      BEQ    CHRIN    ; IGNORE DELETES
+     440/    19E1 : B7 42                      STA    WORK1    ; SAVE CHARACTER
+     441/    19E3 : AD 05                      BSR    CHROUT   ; ECHO CHARACTER
+     442/    19E5 : B6 42                      LDA    WORK1    ; RESTORE CHARACTER
+     443/    19E7 : 81                         RTS             ; RETURN TO CALLER
+     444/    19E8 :                     
+     445/    19E8 :                     ;**************************************************
+     446/    19E8 :                     ;*      PUTS --- PRINT A BLANK (SPACE)            *
+     447/    19E8 :                     ;*  X UNCHANGED                                   *
+     448/    19E8 :                     ;**************************************************
+     449/    19E8 : A6 20               PUTSP  LDA    #SP      ; LOAD SPACE
+     450/    19EA :                     ;* FALL INTO CHROUT
+     451/    19EA :                     
+     452/    19EA :                     ;******************************************
+     453/    19EA :                     ;* CHROUT  -  SEND CHARACTER TO TERMINAL. *
+     454/    19EA :                     ;*            A CARRIAGE RETURN HAS AN    *
+     455/    19EA :                     ;*            ADDED LINE FEED.            *
+     456/    19EA :                     ;* INPUT: A=ASCII CHARACTER TO SEND       *
+     457/    19EA :                     ;* A NOT TRANSPARENT                      *
+     458/    19EA :                     ;******************************************
+     459/    19EA : A1 0D               CHROUT CMP    #CR      ; ? CARRIAGE RETURN
+     460/    19EC : 26 04                      BNE    CHROU2   ; BRANCH NOT
+     461/    19EE : AD 02                      BSR    CHROU2   ; RECURSIVE CALL FOR CR
+     462/    19F0 : A6 0A                      LDA    #LF      ; NOW SEND LINE FEED
+     463/    19F2 : C7 17 F9            CHROU2 STA    ACIA+1   ; STORE CHARACTER INTO PIC
+     464/    19F5 : C6 17 F8            CHROLP LDA    ACIA     ; LOAD STATUS REGISTER
+     465/    19F8 : A5 02                      BIT    #$02     ; ? READY FOR NEXT
+     466/    19FA : 27 F9                      BEQ    CHROLP   ; LOOP UNTIL READY
+     467/    19FC : 81                         RTS             ; AND RETURN
+     468/    19FD :                     
+     469/    19FD :                     ;******************************************
+     470/    19FD :                     ;*      RESET --- POWER ON RESET ROUTINE
+     471/    19FD :                     ;*
+     472/    19FD :                     ;*  INITIALIZE ACIA, PUT OUT STARTUP MESSAGE
+     473/    19FD :                     ;******************************************
+     474/    19FD : AE 0B               RESET  LDX    #11      ; MOVE VECTOR TABLE
+     475/    19FF : D6 18 32            RST    LDA    VECTAB,X ; TO RAM USING A
+     476/    1A02 : E7 4F                      STA    VECRAM,X ; BLOCK MOVE ROUTINE
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 9 - 03/06/2023 12:10:51 PM
+
+
+     477/    1A04 : 5A                         DECX            ; TO ALLOW CHANGES
+     478/    1A05 : 2A F8                      BPL    RST      ; ON THE FLY
+     479/    1A07 : A6 03                      LDA    #3       ; RESET ACIA
+     480/    1A09 : C7 17 F8                   STA    ACIA     ; TO INITIALIZE
+     481/    1A0C : A6 51                      LDA    #$51     ; 8 BITS-NO PARITY-2 STOP BITS
+     482/    1A0E : C7 17 F8                   STA    ACIA     ; SETUP ACIA PARAMETERS
+     483/    1A11 : CD 1C C3                   JSR    SCNBKP   ; CLEAR BREAKPOINTS
+     484/    1A14 : A6 FF                      LDA    #$FF     ; TURN HIGH BIT ON
+     485/    1A16 : F7                  REBCLR STA    ,X       ; SHOW SLOT EMPTY
+     486/    1A17 : 5C                         INCX            ; TO
+     487/    1A18 : 5C                         INCX            ; NEXT
+     488/    1A19 : 5C                         INCX            ; SLOT
+     489/    1A1A : 3A 4B                      DEC    PNCNT    ; COUNT DOWN
+     490/    1A1C : 26 F8                      BNE    REBCLR   ; CLEAR NEXT
+     491/    1A1E : 3F 41               RESREN CLR    SWIFLG   ; SETUP MONITOR ENTRANCE VALUE
+     492/    1A20 : 83                         SWI             ; ENTER MONITOR
+     493/    1A21 : 20 FB                      BRA    RESREN   ; REENTER IF "G"
+     494/    1A23 :                     
+     495/    1A23 :                     ;*******************************************
+     496/    1A23 :                     ;* COMMAND HANDLER                         *
+     497/    1A23 :                     ;*******************************************
+     498/    1A23 : CD 19 81            CMDPDT JSR    PDATA    ; SEND MESSAGE OUT
+     499/    1A26 :                     
+     500/    1A26 : CD 19 7F            CMD    JSR    PCRLF    ; TO NEW LINE
+     501/    1A29 : A6 3E               CMDNNL LDA    #PROMPT  ; READY PROMPT CHR
+     502/    1A2B : AD BD                      BSR    CHROUT   ; SEND IT OUT
+     503/    1A2D : CD 1C A7                   JSR    REMBKP   ; REMOVE BREAKPOINTS IF IN
+     504/    1A30 : AD 9E                      BSR    CHRIN    ; GET NEXT CHARACTER
+     505/    1A32 : 5F                         CLRX            ; ZERO FOR SOME COMMANDS
+     506/    1A33 : A1 43                      CMP    #'C'     ; ? DISPLAY/CHANGE C REGISTER
+     507/    1A35 : 27 49                      BEQ    CMDC     ; BRANCH IF SO
+     508/    1A37 : A1 58                      CMP    #'X'     ; ? DISPLAY/CHANGE X REGISTER
+     509/    1A39 : 27 43                      BEQ    CMDX     ; BRANCH IF SO
+     510/    1A3B : A1 41                      CMP    #'A'     ; ? DISPLAY/CHANGE A REGISTER
+     511/    1A3D : 27 40                      BEQ    CMDA     ; BRANCH IF SO
+     512/    1A3F : A1 52                      CMP    #'R'     ; ? REGISTER DISPLAY
+     513/    1A41 : 27 35                      BEQ    REGR     ; BRANCH YES
+     514/    1A43 : A1 4C                      CMP    #'L'     ; ? LOAD FILE
+     515/    1A45 : 26 03                      BNE    NOTL     ; NOPE
+     516/    1A47 : CC 18 A1                   JMP    CMDL     ; BRANCH YES
+     517/    1A4A : A1 47               NOTL   CMP    #'G'     ; ? GO COMMAND
+     518/    1A4C : 26 05                      BNE    NOTG     ; BRANCH NOT
+     519/    1A4E : 1E 47                      BSET   7,WORK4
+     520/    1A50 : CC 18 3E            ISP    JMP    CMDG     ; GO TO OY
+     521/    1A53 : A1 4D               NOTG   CMP    #'M'     ; ? MEMORY COMMAND
+     522/    1A55 : 26 03                      BNE    NOTM     ; BRANCH NOT
+     523/    1A57 : CC 18 E7                   JMP    CMDM     ; GO TO MEMORY DISPLAY/CHANGE
+     524/    1A5A : A1 54               NOTM   CMP    #'T'     ; ? TRACE
+     525/    1A5C : 26 03                      BNE    NOTT     ; ERROR IF NOT
+     526/    1A5E : CC 1C 23                   JMP    CMDT     ; GO TO IT
+     527/    1A61 : A1 57               NOTT   CMP    #'W'     ; ? WRITE MEMORY
+     528/    1A63 : 26 03                      BNE    NOTW     ; BRANCH NO
+     529/    1A65 : CC 1B 97                   JMP    CMDW     ; GO TO IT
+     530/    1A68 : A1 42               NOTW   CMP    #'B'     ; ? BREAKPOINT COMMAND
+     531/    1A6A : 27 0F                      BEQ    BPNT     ; YES
+     532/    1A6C : A1 50                      CMP    #'P'     ; ? PC COMMAND
+     533/    1A6E : 26 04                      BNE    CMDERR
+     534/    1A70 : 1F 47                      BCLR   7,WORK4
+     535/    1A72 : 20 DC                      BRA    ISP
+     536/    1A74 : AE 0D               CMDERR LDX    #MSGERR-MBASE ; LOAD ERROR STRNIG
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 10 - 03/06/2023 12:10:51 PM
+
+
+     537/    1A76 : 20 AB               TOCPDT BRA    CMDPDT   ; AND SEND IT OUT
+     538/    1A78 : CC 1A EE            REGR   JMP    CMDR
+     539/    1A7B : CC 1B 35            BPNT   JMP    CMDB
+     540/    1A7E :                     
+     541/    1A7E :                     ;*************************************************
+     542/    1A7E :                     ;*  X -- DISPLAY/CHANGE X REGISTER               *
+     543/    1A7E :                     ;*************************************************
+     544/    1A7E : 5C                  CMDX   INCX            ; INCREMENT INDEX
+     545/    1A7F :                     ;* FALL THROUGH
+     546/    1A7F :                     
+     547/    1A7F :                     ;*************************************************
+     548/    1A7F :                     ;*  A -- DISPLAY/CHANGE A REGISTER
+     549/    1A7F :                     ;*************************************************
+     550/    1A7F : 5C                  CMDA   INCX            ; INCREMENT INDEX
+     551/    1A80 :                     ;* FALL THROUGH
+     552/    1A80 :                     
+     553/    1A80 :                     ;*************************************************
+     554/    1A80 :                     ;*  C -- DISPLAY/CHANGE CONDITION CODE REGISTER  *
+     555/    1A80 :                     ;*************************************************
+     556/    1A80 : CD 19 E8            CMDC   JSR    PUTSP    ; SPACE BEFORE VALUE
+     557/    1A83 : BF 42                      STX    WORK1    ; SAVE INDEX VALUE
+     558/    1A85 : CD 1B 23                   JSR    LOCSTK   ; LOCATE STACK ADDRESS
+     559/    1A88 : 9F                         TXA             ; STACK-2 TO A
+     560/    1A89 : BB 42                      ADD    WORK1    ; ADD PROPER OFFSET
+     561/    1A8B : AB 04                      ADD    #4       ; MAKE UP FOR ADDRESS RETURN DIFFERENCE
+     562/    1A8D : 3F 44                      CLR    ADDRH    ; SETUP ZERO HIGH BYTE
+     563/    1A8F : B7 45                      STA    ADDRL    ; AND SET IN LOW
+     564/    1A91 : CC 18 F8            TOMCHG JMP    MCHNGE   ; NOW ENTER MEMORY CHANGE COMMAND
+     565/    1A94 :                     
+     566/    1A94 :                     ;*******************************************
+     567/    1A94 :                     ;*           S W I  HANDLER                *
+     568/    1A94 :                     ;* DETERMINE PROCESSING SWIFLG VALUE       *
+     569/    1A94 :                     ;*******************************************
+     570/    1A94 : 5F                  SWI    CLRX            ; DEFAULT TO STARTUP MESSAGE
+     571/    1A95 : 3D 41                      TST    SWIFLG   ; IS THIS RESET
+     572/    1A97 : 26 04                      BNE    SWICHK   ; IF NOT REMOVE BREAKPOINTS
+     573/    1A99 : 3C 41                      INC    SWIFLG   ; SHOW WE ARE NOW INITIALIZED
+     574/    1A9B : 20 86                      BRA    CMDPDT   ; TO COMMAND HANDLER
+     575/    1A9D : CD 1C C3            SWICHK JSR    SCNBKP
+     576/    1AA0 : F6                  SWIREP LDA    ,X       ; RESTORE OPCODES
+     577/    1AA1 : 2B 0B                      BMI    SWINOB
+     578/    1AA3 : B7 44                      STA    ADDRH
+     579/    1AA5 : E6 01                      LDA    1,X
+     580/    1AA7 : B7 45                      STA    ADDRL
+     581/    1AA9 : E6 02                      LDA    2,X
+     582/    1AAB : CD 19 52                   JSR    STORE
+     583/    1AAE : 5C                  SWINOB INCX
+     584/    1AAF : 5C                         INCX
+     585/    1AB0 : 5C                         INCX
+     586/    1AB1 : 3A 4B                      DEC    PNCNT
+     587/    1AB3 : 26 EB                      BNE    SWIREP
+     588/    1AB5 :                     ;* TRACE ONE INSTRUCTION IF PC AT BREAKPOINT
+     589/    1AB5 : CD 1B 23                   JSR    LOCSTK   ; FIND STACK
+     590/    1AB8 : E6 08                      LDA    8,X      ; GET PC AND ADJUST
+     591/    1ABA : A0 01                      SUB    #1
+     592/    1ABC : B7 47                      STA    WORK4    ; SAVE PCL
+     593/    1ABE : E6 07                      LDA    7,X
+     594/    1AC0 : A2 00                      SBC    #0
+     595/    1AC2 : B7 46                      STA    WORK3    ; SAVE PCH
+     596/    1AC4 : BF 48                      STX    WORK5    ; SAVE SP
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 11 - 03/06/2023 12:10:51 PM
+
+
+     597/    1AC6 : CD 1C C3                   JSR    SCNBKP
+     598/    1AC9 : F6                  SWITRY LDA    0,X
+     599/    1ACA : 2B 1B                      BMI    SWICMP
+     600/    1ACC : B1 46                      CMP    WORK3
+     601/    1ACE : 26 17                      BNE    SWICMP
+     602/    1AD0 : E6 01                      LDA    1,X
+     603/    1AD2 : B1 47                      CMP    WORK4
+     604/    1AD4 : 26 11                      BNE    SWICMP
+     605/    1AD6 : BE 48                      LDX    WORK5
+     606/    1AD8 : E7 08                      STA    8,X
+     607/    1ADA : B6 46                      LDA    WORK3
+     608/    1ADC : E7 07                      STA    7,X
+     609/    1ADE : 3F 4A                      CLR    WORK7
+     610/    1AE0 : A6 01                      LDA    #1
+     611/    1AE2 : B7 49                      STA    WORK6
+     612/    1AE4 : CC 1C 32                   JMP    TRACE
+     613/    1AE7 : 5C                  SWICMP INCX
+     614/    1AE8 : 5C                         INCX
+     615/    1AE9 : 5C                         INCX
+     616/    1AEA : 3A 4B                      DEC    PNCNT
+     617/    1AEC : 26 DB                      BNE    SWITRY
+     618/    1AEE :                     ;* FALL INTO REGISTER DISPLAY FOR BREAKPOINT
+     619/    1AEE :                     
+     620/    1AEE :                     ;***********************************************
+     621/    1AEE :                     ;* R -- PRINT REGISTERS                        *
+     622/    1AEE :                     ;***********************************************
+     623/    1AEE : CD 19 E8            CMDR   JSR    PUTSP    ; SPACE BEFORE DISPLAY
+     624/    1AF1 : AD 30                      BSR    LOCSTK   ; LOCATE STACK-4
+     625/    1AF3 : E6 07                      LDA    7,X      ; OFFSET FOR PC HIGH
+     626/    1AF5 : E7 07                      STA    7,X      ; RESTORE INTO STACK
+     627/    1AF7 : CD 19 69                   JSR    PUTBYT   ; PLACE BYTE OUT
+     628/    1AFA : E6 08                      LDA    8,X      ; OFFSET TO PC LOW
+     629/    1AFC : AD 1F                      BSR    CRBYTS   ; TO HEX AND SPACE
+     630/    1AFE : E6 05                      LDA    5,X      ; NOW AT A REGISTER
+     631/    1B00 : AD 1B                      BSR    CRBYTS   ; TO HEX AND SPACE
+     632/    1B02 : E6 06                      LDA    6,X      ; NOW X
+     633/    1B04 : AD 17                      BSR    CRBYTS   ; HEX AND SPACE
+     634/    1B06 : E6 04                      LDA    4,X      ; NOW CONDITION CODE
+     635/    1B08 : AA E0                      ORA    #$E0     ; SET ON UNUSED BITS
+     636/    1B0A : E7 04                      STA    4,X      ; RESTORE
+     637/    1B0C : AD 0F                      BSR    CRBYTS   ; HEX AND SPACE
+     638/    1B0E : 9F                         TXA             ; STACK POINTER-3
+     639/    1B0F : AB 08                      ADD    #8       ; TO USERS STACKJ POINTER
+     640/    1B11 : AD 0A                      BSR    CRBYTS   ; TO HEX AND SPACE
+     641/    1B13 : CC 1A 26            GTOCMD JMP    CMD      ; BACK TO COMMAND HANDLER
+     642/    1B16 :                     ;* PRINT ADDRESS SUBROUTINE (X UNCHANGED)
+     643/    1B16 : B6 44               PRTADR LDA    ADDRH    ; LOAD HIGH BYTE
+     644/    1B18 : CD 19 69                   JSR    PUTBYT   ; SEND OUT AS HEX
+     645/    1B1B : B6 45                      LDA    ADDRL    ; LOAD LOW BYTE
+     646/    1B1D : CD 19 69            CRBYTS JSR    PUTBYT   ; PUT OUT IN HEX
+     647/    1B20 : CC 19 E8                   JMP    PUTSP    ; FOLLOW WITH A SPACE
+     648/    1B23 :                     
+     649/    1B23 :                     ;***********************************************
+     650/    1B23 :                     ;*  LOCSTK - LOCATE CALLERS STACK POINTER      *
+     651/    1B23 :                     ;* RETURNS X=STACK POINTER-3                   *
+     652/    1B23 :                     ;* A VOLATILE                                  *
+     653/    1B23 :                     ;***********************************************
+     654/    1B23 : AD 01               LOCSTK BSR    LOCST2   ; LEAVE ADDRESS ON STACK
+     655/    1B25 : =$1B                 STKHI  EQU    */256    ; HI BYTE ON STACK
+     656/    1B25 : =$25                 STKLOW EQU    *-(*/256)*256 ; LOW BYTE ON STACK
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 12 - 03/06/2023 12:10:51 PM
+
+
+     657/    1B25 : 81                         RTS             ; RETURN WITH RESULT
+     658/    1B26 : AE 7F               LOCST2 LDX    #$7F     ; LOAD HIGH STACK WORD ADDRESS
+     659/    1B28 : A6 1B               LOCLOP LDA    #STKHI   ; HIGH BYTE FOR COMPARE
+     660/    1B2A : 5A                  LOCDWN DECX            ; TO NEXT LOWER BYTE IN STACK
+     661/    1B2B : F1                         CMP    ,X       ; ? THIS THE SAME
+     662/    1B2C : 26 FC                      BNE    LOCDWN   ; IF NOT TRY NEXT LOWER
+     663/    1B2E : A6 25                      LDA    #STKLOW  ; COMPARE WITH LOW ADDRESS BYTE
+     664/    1B30 : E1 01                      CMP    1,X      ; ? FOUND RETURN ADDRESS
+     665/    1B32 : 26 F4                      BNE    LOCLOP   ; LOOP IF NOT
+     666/    1B34 : 81                         RTS             ; RETURN WITH X SET
+     667/    1B35 :                     
+     668/    1B35 :                     ;**********************************************
+     669/    1B35 :                     ;*  B -- BREAKPOINT CLEAR, SET, OR DISPLAY    *
+     670/    1B35 :                     ;**********************************************
+     671/    1B35 : CD 19 D0            CMDB   JSR    CHRIN    ; READ NEXT CHARACTER
+     672/    1B38 : A1 20                      CMP    #' '     ; ? DISPLAY ONLY
+     673/    1B3A : 26 38                      BNE    BDSPLY   ; BRANCH IF SO
+     674/    1B3C : AD 4F                      BSR    PGTADR   ; OBTAIN BREAKPOINT NUMBER
+     675/    1B3E : 5D                         TSTX            ; ? ANY HIGH BYTE VALUE
+     676/    1B3F : 26 49                      BNE    BKERR    ; ERROR IF SO
+     677/    1B41 : 4A                         DECA            ; DOWN COUNT BY ONE
+     678/    1B42 : A1 03                      CMP    #NUMBKP  ; ? TO HIGH
+     679/    1B44 : 24 44                      BHS    BKERR    ; ERROR IF SO
+     680/    1B46 : 48                         ASLA            ; TIMES TWO
+     681/    1B47 : BB 45                      ADD    ADDRL    ; PLUS ONE FOR THREE TIMES
+     682/    1B49 : AB 38                      ADD    #BKPTBL  ; FIND TABLE ADDRESS
+     683/    1B4B : 4A                         DECA
+     684/    1B4C : B7 43                      STA    WORK2    ; SAVE ADDRESS
+     685/    1B4E : AD 3D                      BSR    PGTADR   ; OBTAIN ADDRESS
+     686/    1B50 : A3 20                      CPX    #$20
+     687/    1B52 : 24 36                      BHS    BKERR
+     688/    1B54 : BE 43                      LDX    WORK2    ; RELOAD ENTRY POINTER
+     689/    1B56 : E7 01                      STA    1,X      ; SAVE LOW ADDRESS
+     690/    1B58 : 26 08                      BNE    BKNOCL   ; BRANCH IF NOT ZERO
+     691/    1B5A : B6 44                      LDA    ADDRH    ; LOAD HIGH ADDRESS
+     692/    1B5C : 26 06                      BNE    BKNCR    ; BRANCH NOT NULL
+     693/    1B5E : 4A                         DECA            ; CREATE NEGATIVE VALUE
+     694/    1B5F : F7                         STA    ,X       ; STORE AS HIGH BYTE
+     695/    1B60 : 20 B1                      BRA    GTOCMD   ; END COMMAND
+     696/    1B62 : B6 44               BKNOCL LDA    ADDRH    ; LOAD HIGH ADDRESS
+     697/    1B64 : F7                  BKNCR  STA    ,X       ; STORE HIGH BYTE
+     698/    1B65 : CD 19 43                   JSR    LOAD     ; LOAD BYTE AT THE ADDRESS
+     699/    1B68 : 43                         COMA            ; INVERT IT
+     700/    1B69 : CD 19 52                   JSR    STORE    ; ATTEMPT STORE
+     701/    1B6C : 25 1C                      BCS    BKERR    ; ERROR IF DID NOT STORE
+     702/    1B6E : 43                         COMA            ; INVERT IT
+     703/    1B6F : CD 19 52                   JSR    STORE    ; STORE IT BACK
+     704/    1B72 : 20 9F                      BRA    GTOCMD   ; END COMMAND
+     705/    1B74 :                     
+     706/    1B74 :                     ;* DISPLAY BREAKPOINTS
+     707/    1B74 : CD 1C C3            BDSPLY JSR    SCNBKP   ; PREEPARE SCAN OF TABLE
+     708/    1B77 : F6                  BDSPLP LDA    ,X       ; OBTAIN HIGH BYTE
+     709/    1B78 : 2B 07                      BMI    BDSKP    ; SKIP IF UNUSED SLOT
+     710/    1B7A : CD 19 69                   JSR    PUTBYT   ; PRINT OUT HIGHT BYTE
+     711/    1B7D : E6 01                      LDA    1,X      ; LOAD LOW BYTE
+     712/    1B7F : AD 9C                      BSR    CRBYTS   ; PRINT IT OUT WITH A SPACE
+     713/    1B81 : 5C                  BDSKP  INCX            ; TO
+     714/    1B82 : 5C                         INCX            ; NEXT
+     715/    1B83 : 5C                         INCX            ; ENTRY
+     716/    1B84 : 3A 4B                      DEC    PNCNT    ; COUNT DOWN
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 13 - 03/06/2023 12:10:51 PM
+
+
+     717/    1B86 : 26 EF                      BNE    BDSPLP   ; LOOP IF MORE
+     718/    1B88 : 20 89                      BRA    GTOCMD   ; END COMMAND
+     719/    1B8A :                     
+     720/    1B8A : CC 1A 74            BKERR  JMP    CMDERR   ; GIVE ERROR RESPONSE
+     721/    1B8D :                     
+     722/    1B8D :                     ;**********************************************
+     723/    1B8D :                     ;*  W -- WRITE MEMORY TO TAPE FILE S1/S9      *
+     724/    1B8D :                     ;**********************************************
+     725/    1B8D : CD 19 A9            PGTADR JSR    GETADR   ; OBTAIN INPUT ADDRESS
+     726/    1B90 : 24 F8                      BCC    BKERR    ; ABORT IF NONE
+     727/    1B92 : BE 44                      LDX    ADDRH    ; READY HIGH BYTE
+     728/    1B94 : B6 45                      LDA    ADDRL    ; READY LOW BYTE
+     729/    1B96 : 81                         RTS             ; BACK TO PUNCH COMMAND
+     730/    1B97 :                     
+     731/    1B97 : AD F4               CMDW   BSR    PGTADR   ; GET STARTING ADDRESS
+     732/    1B99 : A3 20                      CPX    #$20
+     733/    1B9B : 24 ED                      BHS    BKERR
+     734/    1B9D : B7 47                      STA    WORK4    ; INTO WORK4
+     735/    1B9F : BF 46                      STX    WORK3    ; AND WORK3
+     736/    1BA1 : AD EA                      BSR    PGTADR   ; GET ENDING ADDRESS
+     737/    1BA3 : A3 20                      CPX    #$20
+     738/    1BA5 : 24 E3                      BHS    BKERR
+     739/    1BA7 : 4C                         INCA            ; ADD ONE TO INCLUDE TOP BYTE
+     740/    1BA8 : 26 01                      BNE    PUPH     ; BRANCH NO CARRY
+     741/    1BAA : 5C                         INCX            ; UP HIGH BYTE AS WELL
+     742/    1BAB : B0 47               PUPH   SUB    WORK4    ; COMPUTE SIZE
+     743/    1BAD : B7 4D                      STA    PNRCNT+1 ; AND SAVE
+     744/    1BAF : 9F                         TXA             ; NOW
+     745/    1BB0 : B2 46                      SBC    WORK3    ; SIZE HIGH BYTE
+     746/    1BB2 : B7 4C                      STA    PNRCNT   ; AND SAVE
+     747/    1BB4 : B6 47                      LDA    WORK4    ; MOVE
+     748/    1BB6 : B7 45                      STA    ADDRL    ; TO
+     749/    1BB8 : B6 46                      LDA    WORK3    ; MEMORY
+     750/    1BBA : B7 44                      STA    ADDRH    ; POINTER
+     751/    1BBC :                     ;* ADDR->MEMORY START,  PNRCNT=BYTE COUNT OF AREA
+     752/    1BBC :                     ;* NOW TURN ON THE PUNCH
+     753/    1BBC : A6 12                      LDA    #DC2     ; PUNCH ON CONTROL
+     754/    1BBE : CD 19 EA                   JSR    CHROUT   ; SEND OUT
+     755/    1BC1 :                     ;* NOW SEND CR FOLLOWED BY 24 NULLS AND 'S1'
+     756/    1BC1 : AD 53               PREC   BSR    PNCRNL   ; SEND CR/LF ND NULLS
+     757/    1BC3 : AE 17                      LDX    #MSGS1-MBASE ; POINT TO STRING
+     758/    1BC5 : CD 19 85                   JSR    PDATA1   ; SEND 'S1' OUT
+     759/    1BC8 :                     ;* NOW SEND NEXT 24 BYTES OR LESS IF TO THE END
+     760/    1BC8 : B6 4D                      LDA    PNRCNT+1 ; LOW COUNT LEFT
+     761/    1BCA : A0 18                      SUB    #24      ; MINUS 24
+     762/    1BCC : B7 4D                      STA    PNRCNT+1 ; STORE RESULT
+     763/    1BCE : 24 08                      BCC    PALL24   ; IF NO CARRY THEN OK
+     764/    1BD0 : 3A 4C                      DEC    PNRCNT   ; DOWN HIGH BYTE
+     765/    1BD2 : 2A 04                      BPL    PALL24   ; ALL 24 OK
+     766/    1BD4 : AB 18                      ADD    #24      ; WAS LESS SO BACK UP TO ORIGINAL
+     767/    1BD6 : 20 02                      BRA    PGOTC    ; GO USE COUNT HERE
+     768/    1BD8 : A6 18               PALL24 LDA    #24      ; USE ALL 24
+     769/    1BDA : B7 4B               PGOTC  STA    PNCNT    ; COUNT FOR THIS RECORD
+     770/    1BDC :                     ;* SEND THE FRAME COUNT AND START CHECKSUMMING
+     771/    1BDC : 3F 4E                      CLR    CHKSUM
+     772/    1BDE : AB 03                      ADD    #3       ; ADJUST FOR COUNT AND ADDRESS
+     773/    1BE0 : AD 2B                      BSR    PUNBYT   ; SEND FRAME COUNT
+     774/    1BE2 :                     ;* SEND ADDRESS
+     775/    1BE2 : B6 44                      LDA    ADDRH    ; HI BYTE
+     776/    1BE4 : AD 27                      BSR    PUNBYT   ; SEND IT
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 14 - 03/06/2023 12:10:51 PM
+
+
+     777/    1BE6 : B6 45                      LDA    ADDRL    ; LOW BYTE
+     778/    1BE8 : AD 23                      BSR    PUNBYT   ; SEND IT
+     779/    1BEA :                     ;* NOW SEND DAT
+     780/    1BEA : CD 19 43            PUNLOP JSR    LOAD     ; LOAD NEXT BYTE
+     781/    1BED : AD 1E                      BSR    PUNBYT   ; SEND IT OUT
+     782/    1BEF : CD 19 62                   JSR    PTRUP1   ; UP ADDRESS BY ONE
+     783/    1BF2 : 3A 4B                      DEC    PNCNT    ; COUNT DOWN
+     784/    1BF4 : 26 F4                      BNE    PUNLOP   ; LOOP UNTIL ZERO
+     785/    1BF6 :                     ;* SEND OUT THE CHECKSUM
+     786/    1BF6 : B6 4E                      LDA    CHKSUM   ; LOAD CHECKSUM
+     787/    1BF8 : 43                         COMA            ; COMPLETE IT
+     788/    1BF9 : AD 12                      BSR    PUNBYT   ; SEND IT OUT
+     789/    1BFB :                     ;* LOOP OR SEND S9
+     790/    1BFB : B6 4C                      LDA    PNRCNT   ; ? MINUS
+     791/    1BFD : 2B 04                      BMI    PNEND    ; YES QUIT
+     792/    1BFF : BB 4D                      ADD    PNRCNT+1 ; ? ZERO
+     793/    1C01 : 26 BE                      BNE    PREC     ; NO, DO NEXT RECORD
+     794/    1C03 : AD 11               PNEND  BSR    PNCRNL   ; SEND CR AND NULLS
+     795/    1C05 : AE 1A                      LDX    #MSGS9-MBASE ; LOAD S9 TEXT
+     796/    1C07 : CD 19 85                   JSR    PDATA1   ; SEND AND TO COMMAND HANDLER
+     797/    1C0A : CC 1A 26                   JMP    CMD      ; TO COMMAND HANDLER
+     798/    1C0D :                     
+     799/    1C0D :                     ;* SUB TO SEND BYTE IN HEX AND ADJUST CHECKSUM
+     800/    1C0D : 97                  PUNBYT TAX             ; SAVE BYTE
+     801/    1C0E : BB 4E                      ADD    CHKSUM   ; ADD TO CHECKSUM
+     802/    1C10 : B7 4E                      STA    CHKSUM   ; STORE BACK
+     803/    1C12 : 9F                         TXA             ; RESTORE BYTE
+     804/    1C13 : CC 19 69                   JMP    PUTBYT   ; SEND OUT IN HEX
+     805/    1C16 :                     
+     806/    1C16 :                     ;* SUB TO SEND CR/LF AND 24 NULLS
+     807/    1C16 : CD 19 7F            PNCRNL JSR    PCRLF    ; SEND CR/LF
+     808/    1C19 : AE 18                      LDX    #24      ; COUNT NULLS
+     809/    1C1B : 4F                  PNULLS CLRA            ; CREATE NULL
+     810/    1C1C : CD 19 EA                   JSR    CHROUT   ; SEND OUT
+     811/    1C1F : 5A                         DECX            ; COUNT DOWN
+     812/    1C20 : 26 F9                      BNE    PNULLS   ; LOOP UNTIL DONE
+     813/    1C22 : 81                         RTS             ; RETURN
+     814/    1C23 :                     
+     815/    1C23 :                     ;**********************************************
+     816/    1C23 :                     ;*  T -- TRACE COMMAND                        *
+     817/    1C23 :                     ;**********************************************
+     818/    1C23 : A6 01               CMDT   LDA    #1       ; DEFAULT COUNT
+     819/    1C25 : B7 45                      STA    ADDRL    ; TO ONE *GETADR CLEARS ADDRH*
+     820/    1C27 : CD 19 A9                   JSR    GETADR   ; BUILD ADDRESS IF ANY
+     821/    1C2A : B6 44                      LDA    ADDRH    ; SAVE VALUE IN TEMPORARY
+     822/    1C2C : B7 4A                      STA    WORK7    ; LOCATIONS FOR LATER
+     823/    1C2E : B6 45                      LDA    ADDRL    ; USE
+     824/    1C30 : B7 49                      STA    WORK6
+     825/    1C32 :                     ;* SETUP TIMER TO TRIGGER INTERRUPT
+     826/    1C32 : =$1C32               TRACE  EQU    *
+     827/    1C32 : CD 1B 23                   JSR    LOCSTK
+     828/    1C35 : E6 04                      LDA    4,X      ; GET CURRENT USER I-MASK
+     829/    1C37 : A4 08                      AND    #8
+     830/    1C39 : B7 48                      STA    WORK5    ; SAVE IT
+     831/    1C3B : E6 07                      LDA    7,X      ; GET CURRENT USER PC
+     832/    1C3D : B7 44                      STA    ADDRH
+     833/    1C3F : E6 08                      LDA    8,X
+     834/    1C41 : B7 45                      STA    ADDRL
+     835/    1C43 : CD 19 43                   JSR    LOAD     ; GET OPCODE
+     836/    1C46 : A1 83                      CMP    #SWIOP   ; SWI?
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 15 - 03/06/2023 12:10:51 PM
+
+
+     837/    1C48 : 26 0E                      BNE    TRACE3   ; IF YES THEN
+     838/    1C4A : B6 45                      LDA    ADDRL    ; INC USER PC
+     839/    1C4C : AB 01                      ADD    #1
+     840/    1C4E : E7 08                      STA    8,X
+     841/    1C50 : B6 44                      LDA    ADDRH
+     842/    1C52 : A9 00                      ADC    #0
+     843/    1C54 : E7 07                      STA    7,X
+     844/    1C56 : 20 2D                      BRA    TIRQ     ; CONTINUE TO TRACE
+     845/    1C58 : A1 9B               TRACE3 CMP    #$9B     ; SEI?
+     846/    1C5A : 26 14                      BNE    TRACE2   ; IF YES
+     847/    1C5C : E6 04                      LDA    4,X      ; THEN SET IT IN THE STACK
+     848/    1C5E : AA 08                      ORA    #8
+     849/    1C60 : E7 04                      STA    4,X
+     850/    1C62 : B6 45                      LDA    ADDRL    ; THEN INC USER PC
+     851/    1C64 : AB 01                      ADD    #1
+     852/    1C66 : E7 08                      STA    8,X
+     853/    1C68 : B6 44                      LDA    ADDRH
+     854/    1C6A : A9 00                      ADC    #0
+     855/    1C6C : E7 07                      STA    7,X
+     856/    1C6E : 20 15                      BRA    TIRQ     ; CONTINUE TO TRACE
+     857/    1C70 : A1 9A               TRACE2 CMP    #$9A     ; CLI?
+     858/    1C72 : 26 02                      BNE    TRACE1   ; IF YES THEN
+     859/    1C74 : 3F 48                      CLR    WORK5
+     860/    1C76 : E6 04               TRACE1 LDA    4,X
+     861/    1C78 : A4 F7                      AND    #$F7
+     862/    1C7A : E7 04                      STA    4,X
+     863/    1C7C : A6 10                      LDA    #16      ; THEN SET UP TIMER
+     864/    1C7E : B7 08                      STA    TIMER
+     865/    1C80 : A6 08                      LDA    #8
+     866/    1C82 : B7 09                      STA    TIMEC
+     867/    1C84 : 80                         RTI             ; EXECUTE ONE INSTRUCTION
+     868/    1C85 :                     
+     869/    1C85 :                     ;*********************************************
+     870/    1C85 :                     ;*  TIRQ -- TIMER INTERRUPT ROUTINE          *
+     871/    1C85 :                     ;*********************************************
+     872/    1C85 : =$1C85               TIRQ   EQU    *
+     873/    1C85 :                     ;*  RESTORE I-MASK TO PROPER STATE
+     874/    1C85 : A6 40                      LDA    #$40
+     875/    1C87 : B7 09                      STA    TIMEC
+     876/    1C89 : CD 1B 23                   JSR    LOCSTK
+     877/    1C8C : E6 04                      LDA    4,X
+     878/    1C8E : BA 48                      ORA    WORK5
+     879/    1C90 : E7 04                      STA    4,X
+     880/    1C92 :                     ;*  SEE IF MORE TRACING IS DESUIRED
+     881/    1C92 : 3A 49                      DEC    WORK6
+     882/    1C94 : 26 9C                      BNE    TRACE
+     883/    1C96 : 3D 4A                      TST    WORK7
+     884/    1C98 : 27 04                      BEQ    DISREG
+     885/    1C9A : 3A 4A                      DEC    WORK7
+     886/    1C9C : 20 94                      BRA    TRACE
+     887/    1C9E : CC 1A EE            DISREG JMP    CMDR
+     888/    1CA1 :                     
+     889/    1CA1 :                     ;*********************************************
+     890/    1CA1 :                     ;*  INT -- INTERRUPT ROUTINE                 *
+     891/    1CA1 :                     ;*********************************************
+     892/    1CA1 : =$1CA1               IRQ    EQU    *
+     893/    1CA1 : CC 1A 74                   JMP    CMDERR   ; HARDWARE INTERRUPT UNUSED
+     894/    1CA4 :                     
+     895/    1CA4 :                     ;**********************************************
+     896/    1CA4 :                     ;* TWIRQ - TIMER INTERRUPT ROUTINE (WAIT MODE)*
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 16 - 03/06/2023 12:10:51 PM
+
+
+     897/    1CA4 :                     ;**********************************************
+     898/    1CA4 : =$1CA4               TWIRQ  EQU    *
+     899/    1CA4 : CC 1A 74                   JMP    CMDERR   ; TIMER WAIT INTERRUPT UNUSED
+     900/    1CA7 :                     
+     901/    1CA7 :                     ;**********************************************
+     902/    1CA7 :                     ;*  DELBKP - DELETE BREAKPOINT SUBROUTINE     *
+     903/    1CA7 :                     ;**********************************************
+     904/    1CA7 : AD 1A               REMBKP BSR    SCNBKP   ; SETUP PARAMETERS
+     905/    1CA9 : 2A 17                      BPL    REMRTS   ; RETURN IF NOT IN
+     906/    1CAB : F6                  REMLOP LDA    ,X       ; LOAD HIGH ADDRESS
+     907/    1CAC : 2B 0B                      BMI    REMNOB   ; SKIP IF NULL
+     908/    1CAE : B7 44                      STA    ADDRH    ; STORE HIGH ADDRESS
+     909/    1CB0 : E6 01                      LDA    1,X      ; LOAD LOW ADDRESS
+     910/    1CB2 : B7 45                      STA    ADDRL    ; STORE IT
+     911/    1CB4 : E6 02                      LDA    2,X      ; LOAD OPCODE
+     912/    1CB6 : CD 19 52                   JSR    STORE    ; STORE IT BACK OVER 'SWI'
+     913/    1CB9 : 5C                  REMNOB INCX            ; TO
+     914/    1CBA : 5C                         INCX            ; NEXT
+     915/    1CBB : 5C                         INCX            ; ENTRY
+     916/    1CBC : 3A 4B                      DEC    PNCNT    ; COUNT DOWN
+     917/    1CBE : 26 EB                      BNE    REMLOP   ; LOOP IF MORE
+     918/    1CC0 : 33 41                      COM    SWIFLG   ; MAKE POSITIVE TO SHOW REMOVED
+     919/    1CC2 : 81                  REMRTS RTS             ; RETURN
+     920/    1CC3 :                     
+     921/    1CC3 :                     ;* SETUP FOR BREAKPOINT TABLE SCAN
+     922/    1CC3 : A6 03               SCNBKP LDA    #NUMBKP  ; LOAD NUMBER OF BREAKPOINTS
+     923/    1CC5 : B7 4B                      STA    PNCNT    ; SETUP FOR COUNTDOWN
+     924/    1CC7 : AE 38                      LDX    #BKPTBL  ; LOAD TABLE ADDRESS
+     925/    1CC9 : 3D 41                      TST    SWIFLG   ; TEST IF BREAKPOINTS IN ALREADY
+     926/    1CCB : 81                         RTS             ; RETURN
+     927/    1CCC :                     
+     928/    1CCC :                     ;**********************************************
+     929/    1CCC :                     ;*      INTERRUPT VECTORS                     *
+     930/    1CCC :                     ;**********************************************
+     931/    1FF6 :                            ORG    MONSTR+$800-$A ; START OF VECTORS
+     932/    1FF6 : 00 4F                      FDB    VECRAM   ; TIMER INTERRUPT HANDLER (WAIT MODE)
+     933/    1FF8 : 00 52                      FDB    VECRAM+3 ; TIMER INTERRUPT HANDLER
+     934/    1FFA : 00 55                      FDB    VECRAM+6 ; INTERRUPT HANDLER
+     935/    1FFC : 00 58                      FDB    VECRAM+9 ; SWI HANDLER
+     936/    1FFE : 19 FD                      FDB    RESET    ; POWER ON VECTOR
+     937/    2000 :                     
+     938/    2000 :                            END
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 17 - 03/06/2023 12:10:51 PM
+
+
+  Symbol Table (* = unused):
+  --------------------------
+
+ ACIA :                        17F8 - |  ADDRH :                         44 C |
+ ADDRL :                         45 C |
+*ARCHITECTURE :                                      "x86_64-unknown-linux" - |
+ BDSKP :                       1B81 C |  BDSPLP :                      1B77 C |
+ BDSPLY :                      1B74 C | *BELL :                           7 - |
+ BKERR :                       1B8A C |  BKNCR :                       1B64 C |
+ BKNOCL :                      1B62 C |  BKPTBL :                        38 - |
+ BPNT :                        1A7B C | *CASESENSITIVE :                  0 - |
+ CHKSUM :                        4E C |  CHRIN :                       19D0 C |
+ CHROLP :                      19F5 C |  CHROU2 :                      19F2 C |
+ CHROUT :                      19EA C |  CLBYTE :                      187D C |
+ CLEOF :                       18DB C |  CLEOFL :                      18DE C |
+ CLEOR :                       18D4 C |  CLLOAD :                      18C8 C |
+ CMD :                         1A26 C |  CMDA :                        1A7F C |
+ CMDB :                        1B35 C |  CMDC :                        1A80 C |
+ CMDERR :                      1A74 C |  CMDG :                        183E C |
+ CMDL :                        18A1 C |  CMDLSS :                      18AC C |
+ CMDLT :                       18A9 C |  CMDM :                        18E7 C |
+ CMDMB2 :                      192A C |  CMDMBK :                      191A C |
+ CMDMDL :                      190F C |  CMDMIN :                      18D8 C |
+ CMDMLF :                      1930 C |  CMDMLP :                      18F5 C |
+ CMDNNL :                      1A29 C |  CMDPDT :                      1A23 C |
+ CMDR :                        1AEE C |  CMDT :                        1C23 C |
+ CMDW :                        1B97 C |  CMDX :                        1A7E C |
+*COMPMODE :                       0 - | *CONSTPI :        3.141592653589793 - |
+ CONT :                        185D C |  CR :                             D - |
+ CRBYTS :                      1B1D C | *DATE :                "03/06/2023" - |
+ DC1 :                           11 - |  DC2 :                           12 - |
+ DC3 :                           13 - |  DC4 :                           14 - |
+ DISREG :                      1C9E C |  EOT :                            4 - |
+*FALSE :                          0 - |  GADDR :                       184C C |
+ GETADR :                      19A9 C |  GETALP :                      19BA C |
+ GETARG :                      19CE C |  GETASF :                      19C4 C |
+ GETBRT :                      18A0 C |  GETBRZ :                      189E C |
+ GETBY2 :                      1890 C |  GETBYT :                      188B C |
+ GETGTD :                      19B8 C |  GETNCH :                      19A7 C |
+ GETNHX :                      19A3 C |  GETNYB :                      198E C |
+ GOINSB :                      1860 C |  GONOB :                       1873 C |
+ GTOCMD :                      1B13 C | *HAS64 :                          1 - |
+ IRQ :                         1CA1 - |  ISP :                         1A50 C |
+ JMPOP :                         CC - |  LDSTCM :                      1947 C |
+ LF :                             A - | *LISTON :                         1 - |
+ LOAD :                        1943 C |  LOCDWN :                      1B2A C |
+ LOCLOP :                      1B28 C |  LOCST2 :                      1B26 C |
+ LOCSTK :                      1B23 C | *MACEXP :                         7 - |
+ MBASE :                       1800 - |  MCHNGE :                      18F8 C |
+*MOMCPU :                      6805 - | *MOMCPUNAME :                "6805" - |
+ MONSTR :                      1800 - |  MSGERR :                      180D C |
+ MSGMOF :                      1825 C |  MSGNUL :                      180C C |
+ MSGS1 :                       1817 C |  MSGS9 :                       181A C |
+*MSGUP :                       1800 C | *MSGWAS :                      1828 C |
+*NESTMAX :                      100 - |  NEXT :                        1857 C |
+ NOTG :                        1A53 C |  NOTL :                        1A4A C |
+ NOTM :                        1A5A C |  NOTT :                        1A61 C |
+ NOTW :                        1A68 C |  NUMBKP :                         3 - |
+*PADDING :                        0 - |  PALL24 :                      1BD8 C |
+*PCMASK :                        1F - |  PCRLF :                       197F C |
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 18 - 03/06/2023 12:10:51 PM
+
+
+ PDATA :                       1981 C |  PDATA1 :                      1985 C |
+ PDLOOP :                      1983 C |  PGOTC :                       1BDA C |
+ PGTADR :                      1B8D C |  PNCNT :                         4B C |
+ PNCRNL :                      1C16 C |  PNEND :                       1C03 C |
+ PNRCNT :                        4C C |  PNULLS :                      1C1B C |
+ PREC :                        1BC1 C |  PROMPT :                       '>' - |
+ PRTADR :                      1B16 C |  PRTRTS :                      1968 C |
+ PTRUP1 :                      1962 C |  PUNBYT :                      1C0D C |
+ PUNLOP :                      1BEA C |  PUPH :                        1BAB C |
+ PUTBYT :                      1969 C |  PUTNYB :                      1973 C |
+ PUTSP :                       19E8 C |  REBCLR :                      1A16 C |
+ REGR :                        1A78 C | *RELAXED :                        0 - |
+ REMBKP :                      1CA7 C |  REMLOP :                      1CAB C |
+ REMNOB :                      1CB9 C |  REMRTS :                      1CC2 C |
+ RESET :                       19FD C |  RESREN :                      1A1E C |
+ RST :                         19FF C |  SCNBKP :                      1CC3 C |
+ SP :                            20 - |  STKHI :                         1B - |
+ STKLOW :                        25 - |  STORE :                       1952 C |
+ STRTS :                       1961 C |  SWI :                         1A94 C |
+ SWICHK :                      1A9D C |  SWICMP :                      1AE7 C |
+ SWIFLG :                        41 C |  SWINOB :                      1AAE C |
+ SWIOP :                         83 - |  SWIREP :                      1AA0 C |
+ SWITRY :                      1AC9 C | *TIME :               "12:10:51 PM" - |
+ TIMEC :                          9 - |  TIMER :                          8 - |
+ TIRQ :                        1C85 - | *TOCPDT :                      1A76 C |
+*TOMCHG :                      1A91 C |  TRACE :                       1C32 - |
+ TRACE1 :                      1C76 C |  TRACE2 :                      1C70 C |
+ TRACE3 :                      1C58 C | *TRUE :                           1 - |
+*TWIRQ :                       1CA4 - |  VECRAM :                        4F C |
+ VECTAB :                      1832 C | *VERSION :                     142F - |
+ WORK1 :                         42 C |  WORK2 :                         43 C |
+ WORK3 :                         46 C |  WORK4 :                         47 C |
+ WORK5 :                         48 C |  WORK6 :                         49 C |
+ WORK7 :                         4A C |
+
+    179 symbols
+     24 unused symbols
+
+ AS V1.42 Beta [Bld 238] - Source File ASSIST05.ASM - Page 19 - 03/06/2023 12:10:51 PM
+
+
+  Code Pages:
+  ----------
+
+STANDARD (0 changed characters)
+
+1 code page
+
+0.00 seconds assembly time
+
+    939 lines source file
+      2 passes
+      0 errors
+      0 warnings
