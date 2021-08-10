@@ -1,11 +1,16 @@
-AS=asm -C 6805 -n -u
+AS=asl -gnuerrors -L +t 0x0c -q -cpu 6805
+OBJCOPY=p2hex -k -l 32 -F Moto +5 -r '$$-$$'
 
-%.S19:	%.ASM
-	$(AS) -l $*.LST -o $@ $^
+%.p:	%.ASM
+	$(AS) -olist $*.LST $^
+%.S19:	%.p
+	$(OBJCOPY) $^ $@
 
-.PHONY: clean
+.PHONY: clean distclean
 
 all: ASSIST05.S19
 
 clean:
-	-rm -f *.p *.lst *.LST *.S19
+	-rm -f *.LST
+distclean: clean
+	-rm -f *.S19
