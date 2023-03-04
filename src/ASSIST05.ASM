@@ -833,7 +833,7 @@ TRACE  EQU    *
        LDA    8,X
        STA    ADDRL
        JSR    LOAD     ; GET OPCODE
-       CMP    #$83     ; SWI?
+       CMP    #SWIOP   ; SWI?
        BNE    TRACE3   ; IF YES THEN
        LDA    ADDRL    ; INC USER PC
        ADD    #1
