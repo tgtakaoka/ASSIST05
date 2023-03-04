@@ -1,4 +1,4 @@
-       NAM   ASSIST05
+;       NAM   ASSIST05
 
 ***************************************************
 *    MONITOR FOR THE AUSTIN 6805 EVALUATION MODULE*
@@ -375,9 +375,9 @@ GETNYB JSR    CHRIN    ; OBTAIN CHARACTER
        BLO    GETNCH   ; BRANCH NOT HEX
        CMP    #'9      ; ? HIGHER THAN NINE
        BLS    GETNHX   ; BRANCH IF 0 THRU 9
-       CMPA   #'A      ; ? LOWER THAN AN "A"
+       CMP    #'A      ; ? LOWER THAN AN "A"
        BLO    GETNCH   ; BRANCH NOT HEX
-       CMPA   #'F      ; ? HIGHER THAN AN "F"
+       CMP    #'F      ; ? HIGHER THAN AN "F"
        BHI    GETNCH   ; BRANCH NOT HEX
        SUB    #7       ; ADJUST TO $A OFFSET
 GETNHX AND    #$0F     ; CLEAR ASCII BITS
@@ -503,18 +503,18 @@ CMDNNL LDA    #PROMPT  ; READY PROMPT CHR
        JSR    REMBKP   ; REMOVE BREAKPOINTS IF IN
        BSR    CHRIN    ; GET NEXT CHARACTER
        CLRX            ; ZERO FOR SOME COMMANDS
-       CMPA   #'C      ; ? DISPLAY/CHANGE C REGISTER
+       CMP    #'C      ; ? DISPLAY/CHANGE C REGISTER
        BEQ    CMDC     ; BRANCH IF SO
-       CMPA   #'X      ; ? DISPLAY/CHANGE X REGISTER
+       CMP    #'X      ; ? DISPLAY/CHANGE X REGISTER
        BEQ    CMDX     ; BRANCH IF SO
-       CMPA   #'A      ; ? DISPLAY/CHANGE A REGISTER
+       CMP    #'A      ; ? DISPLAY/CHANGE A REGISTER
        BEQ    CMDA     ; BRANCH IF SO
        CMP    #'R      ; ? REGISTER DISPLAY
        BEQ    REGR     ; BRANCH YES
        CMP    #'L      ; ? LOAD FILE
        BNE    NOTL     ; NOPE
        JMP    CMDL     ; BRANCH YES
-NOTL   CMPA   #'G      ; ? GO COMMAND
+NOTL   CMP    #'G      ; ? GO COMMAND
        BNE    NOTG     ; BRANCH NOT
        BSET   7,WORK4
 ISP    JMP    CMDG     ; GO TO OY
