@@ -1,51 +1,51 @@
 ;       NAM   ASSIST05
 
-***************************************************
-*    MONITOR FOR THE AUSTIN 6805 EVALUATION MODULE*
-*          (C) COPYRIGHT 1979 MOTOROLA INC.       *
-***************************************************
+;***************************************************
+;*    MONITOR FOR THE AUSTIN 6805 EVALUATION MODULE*
+;*          (C) COPYRIGHT 1979 MOTOROLA INC.       *
+;***************************************************
 
-**************************************************
-*
-*      THE MONITOR HAS THE FOLLOWING COMMANDS:
-*
-*      R           --  PRINT RGEISTERS
-*
-*      A           --  DISPLAY/CHANGE A REGISTER
-*
-*      X           --  DISPLAY/CHANGE X REGISTER
-*
-*      C           --  DISPLAY/CHANGE CONDITION CODE
-*
-*      P           --  DISPLAY/CHANGE PROGRAM COUNTER
-*
-*      L           --  LOAD TAPE FILE INTO MEMORY
-*
-*      W XXXX YYYY --  WRITE MEMORY TO TAPE FILE
-*
-*      B           --  DISPLAY BREAKPOINTS
-*      B N XXXX    --  SET BREAKPOINT NUMBER N
-*      B N 0       --  CLEAR BREAKPOINT NUMBER N
-*
-*      T           --  TRACE ONE INSTRUCTION
-*      T XXXX      --  TRACE XXX INSTRUCTIONS
-*
-*      M XXXX      --  MEMORY EXAMINE/CHANGE.
-*            TYPE:  ^ -- TO EXAMINE PREVIOUS
-*                  LF -- TO EXAMINE NEXT
-*                  HH -- CHANGE TO HEX DATA
-*                  CR -- TERMINATE COMMAND
-*
-*      G           --  CONTINUE PROGRAM EXECUTION FROM
-*                      CURRENT PROGRAM COUNTER
-*      G XXXX      --  GO EXECUTE PROGRAM AT SPECIFIED
-*                      ADDRESS.
-*
-*************************************************
+;**************************************************
+;*
+;*      THE MONITOR HAS THE FOLLOWING COMMANDS:
+;*
+;*      R           --  PRINT RGEISTERS
+;*
+;*      A           --  DISPLAY/CHANGE A REGISTER
+;*
+;*      X           --  DISPLAY/CHANGE X REGISTER
+;*
+;*      C           --  DISPLAY/CHANGE CONDITION CODE
+;*
+;*      P           --  DISPLAY/CHANGE PROGRAM COUNTER
+;*
+;*      L           --  LOAD TAPE FILE INTO MEMORY
+;*
+;*      W XXXX YYYY --  WRITE MEMORY TO TAPE FILE
+;*
+;*      B           --  DISPLAY BREAKPOINTS
+;*      B N XXXX    --  SET BREAKPOINT NUMBER N
+;*      B N 0       --  CLEAR BREAKPOINT NUMBER N
+;*
+;*      T           --  TRACE ONE INSTRUCTION
+;*      T XXXX      --  TRACE XXX INSTRUCTIONS
+;*
+;*      M XXXX      --  MEMORY EXAMINE/CHANGE.
+;*            TYPE:  ^ -- TO EXAMINE PREVIOUS
+;*                  LF -- TO EXAMINE NEXT
+;*                  HH -- CHANGE TO HEX DATA
+;*                  CR -- TERMINATE COMMAND
+;*
+;*      G           --  CONTINUE PROGRAM EXECUTION FROM
+;*                      CURRENT PROGRAM COUNTER
+;*      G XXXX      --  GO EXECUTE PROGRAM AT SPECIFIED
+;*                      ADDRESS.
+;*
+;*************************************************
 
-*************************************************
-*      MC146805E2 GLOBAL PARAMETERS                *
-*************************************************
+;*************************************************
+;*      MC146805E2 GLOBAL PARAMETERS                *
+;*************************************************
 MONSTR EQU    $1800    ; START OF MONITOR
 PCMASK EQU    $1F      ; MASK OFF FOR BK ADDRESS SPACE (E2)
 NUMBKP EQU    3        ; NUMBER OF BREAKPOINTS
@@ -54,9 +54,9 @@ PROMPT EQU    '>'      ; PROMPT CHARACTER
 TIMER  EQU    8        ; TIMER DATA REGISTER
 TIMEC  EQU    9        ; TIMER CONTROL REGISTER
 
-*************************************************
-*      EQUATES                                  *
-*************************************************
+;*************************************************
+;*      EQUATES                                  *
+;*************************************************
 EOT    EQU    $04      ; END OF TEXT
 CR     EQU    $0D      ; CARRIAGE RETURN
 LF     EQU    $0A      ; LINE FEED
@@ -69,9 +69,9 @@ BELL   EQU    $07      ; CONTROL-G (BELL)
 SWIOP  EQU    $83      ; SOFTWARE INTERRUPT OPCODE
 JMPOP  EQU    $CC      ; EXTENDED JUMP OPCODE
 
-*************************************************
-* MONITOR WORK AREA AT STACK BOTTOM
-*************************************************
+;*************************************************
+;* MONITOR WORK AREA AT STACK BOTTOM
+;*************************************************
        ORG    $41      ; BOTTOM OF STACK
 BKPTBL EQU    *-3*NUMBKP ; BKPT TABLE UNDER STACK BOTTOM
 SWIFLG RMB    1        ; SWI FUNCTION FLAG
@@ -91,12 +91,12 @@ VECRAM RMB    12       ; VECTORS
 
        ORG    MONSTR   ; START OF MONITOR
 
-*************************************************
-* MONITOR BASE STRING/TABLE PAGE
-* (MUST BE AT THE BEGINNING OF A PAGE)
-*************************************************
+;*************************************************
+;* MONITOR BASE STRING/TABLE PAGE
+;* (MUST BE AT THE BEGINNING OF A PAGE)
+;*************************************************
 MBASE  EQU    *        ; START OF WORK PAGE IN ROM
-* MSGUP MUST BE FIRST IN PAGE
+;* MSGUP MUST BE FIRST IN PAGE
 MSGUP  FCC    "ASSIST05 1.1" ; FIREUP MESSAGE
 MSGNUL FCB    EOT      ; END OF STRING
 MSGERR FCC    "? ERROR ?"
@@ -116,9 +116,9 @@ VECTAB FCB    JMPOP
        FCB    JMPOP
        FDB    SWI
 
-*************************************************
-*      GO --- START EXECUTION
-*************************************************
+;*************************************************
+;*      GO --- START EXECUTION
+;*************************************************
 CMDG   JSR    GETADR   ; OBTAIN INPUT ADDRESS
        BCC    NEXT     ; DO CONTINUE IF NONE
        LDA    ADDRH    ; CHECK ADDRESS BOUNDARIES
@@ -148,16 +148,16 @@ GONOB  INCX            ; TO
        DEC    PNCNT    ; COUNT DOWN
        BNE    GOINSB   ; LOOP IF MORE
        COM    SWIFLG   ; FLAG BREAKPOINTS ARE IN
-****RESET USERS TIMER ENVIRONMENT*****
+;****RESET USERS TIMER ENVIRONMENT*****
        RTI             ; RESTART PROGRAM
 
-*********************************************
-*  CLBYTE - LOAD SUBROUTINE TO READ NEXT    *
-*           BYTE, ADJUST CHECKSUM,          *
-*           DECREMENT COUNT.                *
-* OUTPUT: A=BYTE                            *
-*         CC=REFLECTS COUNT DECREMENT       *
-*********************************************
+;*********************************************
+;*  CLBYTE - LOAD SUBROUTINE TO READ NEXT    *
+;*           BYTE, ADJUST CHECKSUM,          *
+;*           DECREMENT COUNT.                *
+;* OUTPUT: A=BYTE                            *
+;*         CC=REFLECTS COUNT DECREMENT       *
+;*********************************************
 CLBYTE BSR    GETBYT   ; OBTAIN NEXT BYTE
        BCC    CMDMIN   ; ERROR IF NONE
        STA    WORK2    ; SAVE VALUE
@@ -167,12 +167,12 @@ CLBYTE BSR    GETBYT   ; OBTAIN NEXT BYTE
        DECX            ; COUNT DOWN
        RTS             ; RETURN TO CALLER
 
-*********************************************
-*  GETBYT - READ BYTE IN HEX SUBROUTINE     *
-* OUTPUT: C=0, Z=1 NO NUMBER                *
-*         C=0, Z=0 INVALID NUMBER           *
-*         C=1, Z=1, A=BINARY BYTE VALUE     *
-*********************************************
+;*********************************************
+;*  GETBYT - READ BYTE IN HEX SUBROUTINE     *
+;* OUTPUT: C=0, Z=1 NO NUMBER                *
+;*         C=0, Z=0 INVALID NUMBER           *
+;*         C=1, Z=1, A=BINARY BYTE VALUE     *
+;*********************************************
 GETBYT JSR    GETNYB   ; GET HEX DIGIT
        BCC    GETBRZ   ; RETURN NO NUMBER
 GETBY2 ASLA            ; SHIFT
@@ -187,13 +187,13 @@ GETBY2 ASLA            ; SHIFT
 GETBRZ CLR    WORK2    ; SET Z=1
 GETBRT RTS             ; RETURN TO CALLER
 
-*********************************************
-*  L -- LOAD FILE INTO MEMORY COMMAND       *
-*********************************************
+;*********************************************
+;*  L -- LOAD FILE INTO MEMORY COMMAND       *
+;*********************************************
 CMDL   JSR    CHRIN    ; READ CARRIAGE RETURN
        LDA    #DC1     ; TURN ON READER
        JSR    CHROUT   ; WITH DC1 CONTROL CODE
-* SEARCH FOR AN 'S'
+;* SEARCH FOR AN 'S'
 CMDLT  JSR    CHRIN    ; READ A CHARACTER
 CMDLSS CMP    #'S'     ; ? 'S'
        BNE    CMDLT    ; LOOP IF NOT
@@ -202,7 +202,7 @@ CMDLSS CMP    #'S'     ; ? 'S'
        BEQ    CLEOF    ; BRANCH END OF FILE
        CMP    #'1'     ; ? 'S1' RECORD
        BNE    CMDLSS   ; NO, TRY 'S' AGAIN
-* READ ADDRESS AND COUNT
+;* READ ADDRESS AND COUNT
        CLR    CHKSUM   ; ZERO CHECKSUM
        BSR    CLBYTE   ; OBTAIN SIZE OF RECORD
        TAX             ; START COUNTDOWN IN X REGISTER
@@ -210,17 +210,17 @@ CMDLSS CMP    #'S'     ; ? 'S'
        STA    ADDRH    ; STORE IT
        BSR    CLBYTE   ; OBTAIN LOW ADDRESS
        STA    ADDRL    ; STORE IT
-* NOW LOAD TEXT
+;* NOW LOAD TEXT
 CLLOAD BSR    CLBYTE   ; NEXT CHARACTER
        BEQ    CLEOR    ; BRANCH IF COUNT DONE
        JSR    STORE    ; STORE CHARACTER
        JSR    PTRUP1   ; UP ADDRESS POINTER
        BRA    CLLOAD   ; LOOP UNTIL COUNT DEPLETED
-* END OF RECORD
+;* END OF RECORD
 CLEOR  INC    CHKSUM   ; TEST VALID CHECKSUM
        BEQ    CMDL     ; CONTINUE IF SO
 CMDMIN JMP    CMDERR   ; ERROR IF INVALID
-* END OF FILE
+;* END OF FILE
 CLEOF  BSR    CLBYTE   ; READ S9 LENGTH
        TAX             ; PREPARE S9 FLUSH COUNT
 CLEOFL BSR    CLBYTE   ; SKIP HEX PAIR
@@ -228,10 +228,10 @@ CLEOFL BSR    CLBYTE   ; SKIP HEX PAIR
        LDX    #MSGMOF-MBASE ; TURN MOTORS OUT
        JMP    CMDPDT   ; SEND AND END COMMAND
 
-*********************************************
-*  M -- EXAMINE/CHANGE MEMORY               *
-*  MCHNGE -- REGISTER CHANGE ENTRY POINT    *
-*********************************************
+;*********************************************
+;*  M -- EXAMINE/CHANGE MEMORY               *
+;*  MCHNGE -- REGISTER CHANGE ENTRY POINT    *
+;*********************************************
 CMDM   JSR    GETADR   ; OBTAIN ADDRESS VALUE
        BCC    CMDMIN   ; INVALID IF NO ADDRESS
        LDA    ADDRH    ; CHECK ADDRESS
@@ -249,7 +249,7 @@ MCHNGE BSR    LOAD     ; LOAD BYTE INTO A REGISTER
        BSR    STORE    ; STORE NEW VALUE
        BCS    CMDMIN   ; BRANCH IF STORE FAILS
        JSR    CHRIN    ; OBTAIN DELIMITER
-* CHECK OUT DELIMITERS
+;* CHECK OUT DELIMITERS
 CMDMDL CMP    #LF      ; ? TO NEXT BYTE
        BEQ    CMDMLF   ; BRANCH IF SO
        CMP    #'^'     ; ? TO PREVIOUS BYTE
@@ -276,14 +276,14 @@ CMDMLF LDA    #CR      ; SEBD JUST CARRIAGE RETURN
        CLR    ADDRL    ; ADDRESS
        BRA    CMDMLP   ; TO NEXT BYTE
 
-**********************************************
-*       LOAD - LOAD INTO A FROM ADDRESS IN   *
-*              POINTER ADDRH/ADDRL           *
-* INPUT: ADDRH/ADDRL=ADDRESS                 *
-* OUTPUT: A=BYTE FROM POINTED LOCATION       *
-* X IS TRANSPARENT                           *
-* WORK1,WORK2,WORK3 USED                     *
-**********************************************
+;**********************************************
+;*       LOAD - LOAD INTO A FROM ADDRESS IN   *
+;*              POINTER ADDRH/ADDRL           *
+;* INPUT: ADDRH/ADDRL=ADDRESS                 *
+;* OUTPUT: A=BYTE FROM POINTED LOCATION       *
+;* X IS TRANSPARENT                           *
+;* WORK1,WORK2,WORK3 USED                     *
+;**********************************************
 LOAD   STX    WORK1    ; SAVE X
        LDX    #$C6     ; C6=LDA 2-BYTE EXTENDED
 
@@ -294,17 +294,17 @@ LDSTCM STX    WORK2    ; PUT OPCODE IN PLACE
        LDX    WORK1    ; RESTORE X
        RTS             ; AND EXIT
 
-**********************************************
-*       STORE - STORE A AT ADDRESS IN POINTER*
-*               ADDRH/ADDRL                  *
-* INPUT: A=BYTE TO STORE                     *
-*        ADDRH/ADDRL=ADDRESS                 *
-* OUTPUT: C=0 STORE WENT OK                  *
-*         C=1 STORE DID NOT TAKE (NOT RAM)   *
-* REGISTERS TRANSPARENT                      *
-* (A NOT TRANSPARENT ON INVALID STORE)       *
-* WORK1,WORK2,WORK3,WORK4 USED               *
-**********************************************
+;**********************************************
+;*       STORE - STORE A AT ADDRESS IN POINTER*
+;*               ADDRH/ADDRL                  *
+;* INPUT: A=BYTE TO STORE                     *
+;*        ADDRH/ADDRL=ADDRESS                 *
+;* OUTPUT: C=0 STORE WENT OK                  *
+;*         C=1 STORE DID NOT TAKE (NOT RAM)   *
+;* REGISTERS TRANSPARENT                      *
+;* (A NOT TRANSPARENT ON INVALID STORE)       *
+;* WORK1,WORK2,WORK3,WORK4 USED               *
+;**********************************************
 STORE  STX    WORK1    ; SAVE X
        LDX    #$C7     ; C7=STA 2-EXTENDED
        BSR    LDSTCM   ; CALL STORE ROUTINE
@@ -315,19 +315,19 @@ STORE  STX    WORK1    ; SAVE X
        SEC             ; SHOW INVALID STORE
 STRTS  RTS             ; RETURN
 
-*******************************************
-*      PTRUP1 - INCREMENT MEMORY POINTER  *
-*******************************************
+;*******************************************
+;*      PTRUP1 - INCREMENT MEMORY POINTER  *
+;*******************************************
 PTRUP1 INC    ADDRL    ; INCREMENT LOW BYTE
        BNE    PRTRTS   ; NON-ZERO MEANS  NO CARRY
        INC    ADDRH    ; INCREMENT HIGH BYTE
 PRTRTS RTS             ; RETURN TO CALLER
 
-*******************************************
-*      PUTBYT --- PRINT A IN HEX          *
-*  X TRANSPARENT                          *
-*  WORK1 USED                             *
-*******************************************
+;*******************************************
+;*      PUTBYT --- PRINT A IN HEX          *
+;*  X TRANSPARENT                          *
+;*  WORK1 USED                             *
+;*******************************************
 PUTBYT STA    WORK1    ; SAVE A
        LSRA            ; SHIFT TO
        LSRA            ; LEFT HEX
@@ -335,12 +335,12 @@ PUTBYT STA    WORK1    ; SAVE A
        LSRA            ; SHIFT HIGH NYBBLE DOWN
        BSR    PUTNYB   ; PRINT IT
        LDA    WORK1
-* FALL INTO PUTNYB
+;* FALL INTO PUTNYB
 
-*************************************************
-*      PUTNYB --- PRINT LOWER NYBBLE OF A IN HEX*
-*  A,X TRANSPARENT                              *
-*************************************************
+;*************************************************
+;*      PUTNYB --- PRINT LOWER NYBBLE OF A IN HEX*
+;*  A,X TRANSPARENT                              *
+;*************************************************
 PUTNYB AND    #$F      ; MASK OFF HIGH NYBBLE
        ADD    #'0'     ; ADD ASCII ZERO
        CMP    #'9'     ; CHECK FOR A-F
@@ -348,12 +348,12 @@ PUTNYB AND    #$F      ; MASK OFF HIGH NYBBLE
        ADD    #'A'-'9'-1 ; ADJUSTMENT FOR HEX A-F
        BRA    CHROUT
 
-*************************************************
-*  PDATA  - PRINT MONITOR STRING AFTER CR/LF
-*  PDARA1 - PRINT MONITOR STRING
-*  PCRLF  - PRINT CARRIAGE RETURN AND LINE FEED
-* INPUT: X=OFFSET TO STRING IN BASE PAGE (UNUSED FOR PCRLF)
-**************************************************
+;*************************************************
+;*  PDATA  - PRINT MONITOR STRING AFTER CR/LF
+;*  PDARA1 - PRINT MONITOR STRING
+;*  PCRLF  - PRINT CARRIAGE RETURN AND LINE FEED
+;* INPUT: X=OFFSET TO STRING IN BASE PAGE (UNUSED FOR PCRLF)
+;**************************************************
 PCRLF  LDX    #MSGNUL-MBASE ; LOAD NULL STRING ADDRESS
 PDATA  LDA    #CR      ; PREPARE CARRIAGE RETURN
 PDLOOP BSR    CHROUT   ; SEND TEXT CHARACTER
@@ -363,13 +363,13 @@ PDATA1 LDA    MBASE,X  ; LOAD NEXT CHARACTER
        BNE    PDLOOP   ; BRANCH NO
        RTS             ; RETURN DONE
 
-******************************************
-* GETNYB - OBTAIN NEXT HEX CHARACTER     *
-* OUTPUT: C=0 NOT HEX INPUT, A=DELIMITER *
-*         C=1 HEX INPUT, A=BINARY VALUE  *
-*  X TRANSPARENT                         *
-*  WORK1 IN USE                          *
-******************************************
+;******************************************
+;* GETNYB - OBTAIN NEXT HEX CHARACTER     *
+;* OUTPUT: C=0 NOT HEX INPUT, A=DELIMITER *
+;*         C=1 HEX INPUT, A=BINARY VALUE  *
+;*  X TRANSPARENT                         *
+;*  WORK1 IN USE                          *
+;******************************************
 GETNYB JSR    CHRIN    ; OBTAIN CHARACTER
        CMP    #'0'     ; ? LOWER THAN ZERO
        BLO    GETNCH   ; BRANCH NOT HEX
@@ -386,16 +386,16 @@ GETNHX AND    #$0F     ; CLEAR ASCII BITS
 GETNCH CLC             ; CLER CARRY FOR NO HEX
        RTS             ; RETURN
 
-*****************************************
-*     GETADR - BUILD ANY SIZE BINARY    *
-*              NUMBER FROM INPUT.       *
-*              LEADING BLANKS SKIPPED.  *
-* OUTPUT: CC=0 NO NUMBER ENTERED        *
-*         CC=1 ADDRH/ADDRL HAS NUMBER   *
-*         A=DELIMITER                   *
-* A,X VOLATILE                          *
-* WORK1 IN USE                          *
-*****************************************
+;*****************************************
+;*     GETADR - BUILD ANY SIZE BINARY    *
+;*              NUMBER FROM INPUT.       *
+;*              LEADING BLANKS SKIPPED.  *
+;* OUTPUT: CC=0 NO NUMBER ENTERED        *
+;*         CC=1 ADDRH/ADDRL HAS NUMBER   *
+;*         A=DELIMITER                   *
+;* A,X VOLATILE                          *
+;* WORK1 IN USE                          *
+;*****************************************
 GETADR JSR    PUTSP
        CLR    ADDRH    ; CLEAR HIGH BYTE
        BSR    GETNYB   ; OBTAIN FIRST HEX VALUE
@@ -421,14 +421,14 @@ GETASF ASLA            ; SHIFT NEXT BIT
 GETARG SEC             ; SHOW NUMBER OBTAINED
        RTS             ; RETURN TO CALLER
 
-******************************************
-* CHRIN  -  OBTAIN NEXT INPUT CHARACTER  *
-* OUTPUT: A=CHARACTER RECEIVED           *
-* X IS TRANSPARENT                       *
-* NULLS AND RUBOUTS IGNORED              *
-* ALL CHARACTERS ECHOED OUT              *
-* WORK1 USED                             *
-******************************************
+;******************************************
+;* CHRIN  -  OBTAIN NEXT INPUT CHARACTER  *
+;* OUTPUT: A=CHARACTER RECEIVED           *
+;* X IS TRANSPARENT                       *
+;* NULLS AND RUBOUTS IGNORED              *
+;* ALL CHARACTERS ECHOED OUT              *
+;* WORK1 USED                             *
+;******************************************
 CHRIN  LDA    ACIA     ; LOAD STATUS REGISTER
        LSRA            ; CHECK FOR INPUT
        BCC    CHRIN    ; LOOP UNTIL SOME
@@ -442,20 +442,20 @@ CHRIN  LDA    ACIA     ; LOAD STATUS REGISTER
        LDA    WORK1    ; RESTORE CHARACTER
        RTS             ; RETURN TO CALLER
 
-**************************************************
-*      PUTS --- PRINT A BLANK (SPACE)            *
-*  X UNCHANGED                                   *
-**************************************************
+;**************************************************
+;*      PUTS --- PRINT A BLANK (SPACE)            *
+;*  X UNCHANGED                                   *
+;**************************************************
 PUTSP  LDA    #SP      ; LOAD SPACE
-* FALL INTO CHROUT
+;* FALL INTO CHROUT
 
-******************************************
-* CHROUT  -  SEND CHARACTER TO TERMINAL. *
-*            A CARRIAGE RETURN HAS AN    *
-*            ADDED LINE FEED.            *
-* INPUT: A=ASCII CHARACTER TO SEND       *
-* A NOT TRANSPARENT                      *
-******************************************
+;******************************************
+;* CHROUT  -  SEND CHARACTER TO TERMINAL. *
+;*            A CARRIAGE RETURN HAS AN    *
+;*            ADDED LINE FEED.            *
+;* INPUT: A=ASCII CHARACTER TO SEND       *
+;* A NOT TRANSPARENT                      *
+;******************************************
 CHROUT CMP    #CR      ; ? CARRIAGE RETURN
        BNE    CHROU2   ; BRANCH NOT
        BSR    CHROU2   ; RECURSIVE CALL FOR CR
@@ -466,11 +466,11 @@ CHROLP LDA    ACIA     ; LOAD STATUS REGISTER
        BEQ    CHROLP   ; LOOP UNTIL READY
        RTS             ; AND RETURN
 
-******************************************
-*      RESET --- POWER ON RESET ROUTINE
-*
-*  INITIALIZE ACIA, PUT OUT STARTUP MESSAGE
-******************************************
+;******************************************
+;*      RESET --- POWER ON RESET ROUTINE
+;*
+;*  INITIALIZE ACIA, PUT OUT STARTUP MESSAGE
+;******************************************
 RESET  LDX    #11      ; MOVE VECTOR TABLE
 RST    LDA    VECTAB,X ; TO RAM USING A
        STA    VECRAM,X ; BLOCK MOVE ROUTINE
@@ -492,9 +492,9 @@ RESREN CLR    SWIFLG   ; SETUP MONITOR ENTRANCE VALUE
        SWI             ; ENTER MONITOR
        BRA    RESREN   ; REENTER IF "G"
 
-*******************************************
-* COMMAND HANDLER                         *
-*******************************************
+;*******************************************
+;* COMMAND HANDLER                         *
+;*******************************************
 CMDPDT JSR    PDATA    ; SEND MESSAGE OUT
 
 CMD    JSR    PCRLF    ; TO NEW LINE
@@ -538,21 +538,21 @@ TOCPDT BRA    CMDPDT   ; AND SEND IT OUT
 REGR   JMP    CMDR
 BPNT   JMP    CMDB
 
-*************************************************
-*  X -- DISPLAY/CHANGE X REGISTER               *
-*************************************************
+;*************************************************
+;*  X -- DISPLAY/CHANGE X REGISTER               *
+;*************************************************
 CMDX   INCX            ; INCREMENT INDEX
-* FALL THROUGH
+;* FALL THROUGH
 
-*************************************************
-*  A -- DISPLAY/CHANGE A REGISTER
-*************************************************
+;*************************************************
+;*  A -- DISPLAY/CHANGE A REGISTER
+;*************************************************
 CMDA   INCX            ; INCREMENT INDEX
-* FALL THROUGH
+;* FALL THROUGH
 
-*************************************************
-*  C -- DISPLAY/CHANGE CONDITION CODE REGISTER  *
-*************************************************
+;*************************************************
+;*  C -- DISPLAY/CHANGE CONDITION CODE REGISTER  *
+;*************************************************
 CMDC   JSR    PUTSP    ; SPACE BEFORE VALUE
        STX    WORK1    ; SAVE INDEX VALUE
        JSR    LOCSTK   ; LOCATE STACK ADDRESS
@@ -563,10 +563,10 @@ CMDC   JSR    PUTSP    ; SPACE BEFORE VALUE
        STA    ADDRL    ; AND SET IN LOW
 TOMCHG JMP    MCHNGE   ; NOW ENTER MEMORY CHANGE COMMAND
 
-*******************************************
-*           S W I  HANDLER                *
-* DETERMINE PROCESSING SWIFLG VALUE       *
-*******************************************
+;*******************************************
+;*           S W I  HANDLER                *
+;* DETERMINE PROCESSING SWIFLG VALUE       *
+;*******************************************
 SWI    CLRX            ; DEFAULT TO STARTUP MESSAGE
        TST    SWIFLG   ; IS THIS RESET
        BNE    SWICHK   ; IF NOT REMOVE BREAKPOINTS
@@ -585,7 +585,7 @@ SWINOB INCX
        INCX
        DEC    PNCNT
        BNE    SWIREP
-* TRACE ONE INSTRUCTION IF PC AT BREAKPOINT
+;* TRACE ONE INSTRUCTION IF PC AT BREAKPOINT
        JSR    LOCSTK   ; FIND STACK
        LDA    8,X      ; GET PC AND ADJUST
        SUB    #1
@@ -615,11 +615,11 @@ SWICMP INCX
        INCX
        DEC    PNCNT
        BNE    SWITRY
-* FALL INTO REGISTER DISPLAY FOR BREAKPOINT
+;* FALL INTO REGISTER DISPLAY FOR BREAKPOINT
 
-***********************************************
-* R -- PRINT REGISTERS                        *
-***********************************************
+;***********************************************
+;* R -- PRINT REGISTERS                        *
+;***********************************************
 CMDR   JSR    PUTSP    ; SPACE BEFORE DISPLAY
        BSR    LOCSTK   ; LOCATE STACK-4
        LDA    7,X      ; OFFSET FOR PC HIGH
@@ -639,18 +639,18 @@ CMDR   JSR    PUTSP    ; SPACE BEFORE DISPLAY
        ADD    #8       ; TO USERS STACKJ POINTER
        BSR    CRBYTS   ; TO HEX AND SPACE
 GTOCMD JMP    CMD      ; BACK TO COMMAND HANDLER
-* PRINT ADDRESS SUBROUTINE (X UNCHANGED)
+;* PRINT ADDRESS SUBROUTINE (X UNCHANGED)
 PRTADR LDA    ADDRH    ; LOAD HIGH BYTE
        JSR    PUTBYT   ; SEND OUT AS HEX
        LDA    ADDRL    ; LOAD LOW BYTE
 CRBYTS JSR    PUTBYT   ; PUT OUT IN HEX
        JMP    PUTSP    ; FOLLOW WITH A SPACE
 
-***********************************************
-*  LOCSTK - LOCATE CALLERS STACK POINTER      *
-* RETURNS X=STACK POINTER-3                   *
-* A VOLATILE                                  *
-***********************************************
+;***********************************************
+;*  LOCSTK - LOCATE CALLERS STACK POINTER      *
+;* RETURNS X=STACK POINTER-3                   *
+;* A VOLATILE                                  *
+;***********************************************
 LOCSTK BSR    LOCST2   ; LEAVE ADDRESS ON STACK
 STKHI  EQU    */256    ; HI BYTE ON STACK
 STKLOW EQU    *-(*/256)*256 ; LOW BYTE ON STACK
@@ -665,9 +665,9 @@ LOCDWN DECX            ; TO NEXT LOWER BYTE IN STACK
        BNE    LOCLOP   ; LOOP IF NOT
        RTS             ; RETURN WITH X SET
 
-**********************************************
-*  B -- BREAKPOINT CLEAR, SET, OR DISPLAY    *
-**********************************************
+;**********************************************
+;*  B -- BREAKPOINT CLEAR, SET, OR DISPLAY    *
+;**********************************************
 CMDB   JSR    CHRIN    ; READ NEXT CHARACTER
        CMP    #' '     ; ? DISPLAY ONLY
        BNE    BDSPLY   ; BRANCH IF SO
@@ -703,7 +703,7 @@ BKNCR  STA    ,X       ; STORE HIGH BYTE
        JSR    STORE    ; STORE IT BACK
        BRA    GTOCMD   ; END COMMAND
 
-* DISPLAY BREAKPOINTS
+;* DISPLAY BREAKPOINTS
 BDSPLY JSR    SCNBKP   ; PREEPARE SCAN OF TABLE
 BDSPLP LDA    ,X       ; OBTAIN HIGH BYTE
        BMI    BDSKP    ; SKIP IF UNUSED SLOT
@@ -719,9 +719,9 @@ BDSKP  INCX            ; TO
 
 BKERR  JMP    CMDERR   ; GIVE ERROR RESPONSE
 
-**********************************************
-*  W -- WRITE MEMORY TO TAPE FILE S1/S9      *
-**********************************************
+;**********************************************
+;*  W -- WRITE MEMORY TO TAPE FILE S1/S9      *
+;**********************************************
 PGTADR JSR    GETADR   ; OBTAIN INPUT ADDRESS
        BCC    BKERR    ; ABORT IF NONE
        LDX    ADDRH    ; READY HIGH BYTE
@@ -748,15 +748,15 @@ PUPH   SUB    WORK4    ; COMPUTE SIZE
        STA    ADDRL    ; TO
        LDA    WORK3    ; MEMORY
        STA    ADDRH    ; POINTER
-* ADDR->MEMORY START,  PNRCNT=BYTE COUNT OF AREA
-* NOW TURN ON THE PUNCH
+;* ADDR->MEMORY START,  PNRCNT=BYTE COUNT OF AREA
+;* NOW TURN ON THE PUNCH
        LDA    #DC2     ; PUNCH ON CONTROL
        JSR    CHROUT   ; SEND OUT
-* NOW SEND CR FOLLOWED BY 24 NULLS AND 'S1'
+;* NOW SEND CR FOLLOWED BY 24 NULLS AND 'S1'
 PREC   BSR    PNCRNL   ; SEND CR/LF ND NULLS
        LDX    #MSGS1-MBASE ; POINT TO STRING
        JSR    PDATA1   ; SEND 'S1' OUT
-* NOW SEND NEXT 24 BYTES OR LESS IF TO THE END
+;* NOW SEND NEXT 24 BYTES OR LESS IF TO THE END
        LDA    PNRCNT+1 ; LOW COUNT LEFT
        SUB    #24      ; MINUS 24
        STA    PNRCNT+1 ; STORE RESULT
@@ -767,26 +767,26 @@ PREC   BSR    PNCRNL   ; SEND CR/LF ND NULLS
        BRA    PGOTC    ; GO USE COUNT HERE
 PALL24 LDA    #24      ; USE ALL 24
 PGOTC  STA    PNCNT    ; COUNT FOR THIS RECORD
-* SEND THE FRAME COUNT AND START CHECKSUMMING
+;* SEND THE FRAME COUNT AND START CHECKSUMMING
        CLR    CHKSUM
        ADD    #3       ; ADJUST FOR COUNT AND ADDRESS
        BSR    PUNBYT   ; SEND FRAME COUNT
-* SEND ADDRESS
+;* SEND ADDRESS
        LDA    ADDRH    ; HI BYTE
        BSR    PUNBYT   ; SEND IT
        LDA    ADDRL    ; LOW BYTE
        BSR    PUNBYT   ; SEND IT
-* NOW SEND DAT
+;* NOW SEND DAT
 PUNLOP JSR    LOAD     ; LOAD NEXT BYTE
        BSR    PUNBYT   ; SEND IT OUT
        JSR    PTRUP1   ; UP ADDRESS BY ONE
        DEC    PNCNT    ; COUNT DOWN
        BNE    PUNLOP   ; LOOP UNTIL ZERO
-* SEND OUT THE CHECKSUM
+;* SEND OUT THE CHECKSUM
        LDA    CHKSUM   ; LOAD CHECKSUM
        COMA            ; COMPLETE IT
        BSR    PUNBYT   ; SEND IT OUT
-* LOOP OR SEND S9
+;* LOOP OR SEND S9
        LDA    PNRCNT   ; ? MINUS
        BMI    PNEND    ; YES QUIT
        ADD    PNRCNT+1 ; ? ZERO
@@ -796,14 +796,14 @@ PNEND  BSR    PNCRNL   ; SEND CR AND NULLS
        JSR    PDATA1   ; SEND AND TO COMMAND HANDLER
        JMP    CMD      ; TO COMMAND HANDLER
 
-* SUB TO SEND BYTE IN HEX AND ADJUST CHECKSUM
+;* SUB TO SEND BYTE IN HEX AND ADJUST CHECKSUM
 PUNBYT TAX             ; SAVE BYTE
        ADD    CHKSUM   ; ADD TO CHECKSUM
        STA    CHKSUM   ; STORE BACK
        TXA             ; RESTORE BYTE
        JMP    PUTBYT   ; SEND OUT IN HEX
 
-* SUB TO SEND CR/LF AND 24 NULLS
+;* SUB TO SEND CR/LF AND 24 NULLS
 PNCRNL JSR    PCRLF    ; SEND CR/LF
        LDX    #24      ; COUNT NULLS
 PNULLS CLRA            ; CREATE NULL
@@ -812,9 +812,9 @@ PNULLS CLRA            ; CREATE NULL
        BNE    PNULLS   ; LOOP UNTIL DONE
        RTS             ; RETURN
 
-**********************************************
-*  T -- TRACE COMMAND                        *
-**********************************************
+;**********************************************
+;*  T -- TRACE COMMAND                        *
+;**********************************************
 CMDT   LDA    #1       ; DEFAULT COUNT
        STA    ADDRL    ; TO ONE *GETADR CLEARS ADDRH*
        JSR    GETADR   ; BUILD ADDRESS IF ANY
@@ -822,7 +822,7 @@ CMDT   LDA    #1       ; DEFAULT COUNT
        STA    WORK7    ; LOCATIONS FOR LATER
        LDA    ADDRL    ; USE
        STA    WORK6
-* SETUP TIMER TO TRIGGER INTERRUPT
+;* SETUP TIMER TO TRIGGER INTERRUPT
 TRACE  EQU    *
        JSR    LOCSTK
        LDA    4,X      ; GET CURRENT USER I-MASK
@@ -866,18 +866,18 @@ TRACE1 LDA    4,X
        STA    TIMEC
        RTI             ; EXECUTE ONE INSTRUCTION
 
-*********************************************
-*  TIRQ -- TIMER INTERRUPT ROUTINE          *
-*********************************************
+;*********************************************
+;*  TIRQ -- TIMER INTERRUPT ROUTINE          *
+;*********************************************
 TIRQ   EQU    *
-*  RESTORE I-MASK TO PROPER STATE
+;*  RESTORE I-MASK TO PROPER STATE
        LDA    #$40
        STA    TIMEC
        JSR    LOCSTK
        LDA    4,X
        ORA    WORK5
        STA    4,X
-*  SEE IF MORE TRACING IS DESUIRED
+;*  SEE IF MORE TRACING IS DESUIRED
        DEC    WORK6
        BNE    TRACE
        TST    WORK7
@@ -886,21 +886,21 @@ TIRQ   EQU    *
        BRA    TRACE
 DISREG JMP    CMDR
 
-*********************************************
-*  INT -- INTERRUPT ROUTINE                 *
-*********************************************
+;*********************************************
+;*  INT -- INTERRUPT ROUTINE                 *
+;*********************************************
 IRQ    EQU    *
        JMP    CMDERR   ; HARDWARE INTERRUPT UNUSED
 
-**********************************************
-* TWIRQ - TIMER INTERRUPT ROUTINE (WAIT MODE)*
-**********************************************
+;**********************************************
+;* TWIRQ - TIMER INTERRUPT ROUTINE (WAIT MODE)*
+;**********************************************
 TWIRQ  EQU    *
        JMP    CMDERR   ; TIMER WAIT INTERRUPT UNUSED
 
-**********************************************
-*  DELBKP - DELETE BREAKPOINT SUBROUTINE     *
-**********************************************
+;**********************************************
+;*  DELBKP - DELETE BREAKPOINT SUBROUTINE     *
+;**********************************************
 REMBKP BSR    SCNBKP   ; SETUP PARAMETERS
        BPL    REMRTS   ; RETURN IF NOT IN
 REMLOP LDA    ,X       ; LOAD HIGH ADDRESS
@@ -918,16 +918,16 @@ REMNOB INCX            ; TO
        COM    SWIFLG   ; MAKE POSITIVE TO SHOW REMOVED
 REMRTS RTS             ; RETURN
 
-* SETUP FOR BREAKPOINT TABLE SCAN
+;* SETUP FOR BREAKPOINT TABLE SCAN
 SCNBKP LDA    #NUMBKP  ; LOAD NUMBER OF BREAKPOINTS
        STA    PNCNT    ; SETUP FOR COUNTDOWN
        LDX    #BKPTBL  ; LOAD TABLE ADDRESS
        TST    SWIFLG   ; TEST IF BREAKPOINTS IN ALREADY
        RTS             ; RETURN
 
-**********************************************
-*      INTERRUPT VECTORS                     *
-**********************************************
+;**********************************************
+;*      INTERRUPT VECTORS                     *
+;**********************************************
        ORG    MONSTR+$800-$A ; START OF VECTORS
        FDB    VECRAM   ; TIMER INTERRUPT HANDLER (WAIT MODE)
        FDB    VECRAM+3 ; TIMER INTERRUPT HANDLER
